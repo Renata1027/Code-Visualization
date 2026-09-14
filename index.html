@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>代码执行演变可视化 · Code Line Evolution Visualizer</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="app-header">
+    <h1>代码执行演变可视化</h1>
+    <p class="subtitle">粘贴一段 JavaScript 代码，逐行查看它运行时每一行、每个变量是如何变化的</p>
+  </header>
+
+  <main class="app-main">
+    <section class="editor-panel">
+      <div class="toolbar">
+        <select id="exampleSelect" title="加载示例代码">
+          <option value="">— 选择示例代码 —</option>
+        </select>
+        <button id="runBtn" class="btn btn-primary">▶ 运行并可视化</button>
+        <button id="clearBtn" class="btn">清空</button>
+        <label class="heatmap-toggle">
+          <input type="checkbox" id="heatmapToggle" checked>
+          显示执行热度
+        </label>
+      </div>
+
+      <div class="editor-wrap" id="editorWrap">
+        <div class="gutter" id="gutter"></div>
+        <div class="code-area" id="codeArea">
+          <div class="line-highlight" id="lineHighlight" hidden></div>
+          <textarea id="codeInput" spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off"></textarea>
+        </div>
+      </div>
+
+      <div id="errorBox" class="error-box" hidden></div>
+
+      <div class="playback-bar">
+        <button id="firstBtn" class="btn icon-btn" title="回到开始">⏮</button>
+        <button id="prevBtn" class="btn icon-btn" title="上一步 (←)">◀</button>
+        <button id="playBtn" class="btn icon-btn" title="播放/暂停 (空格)">▶</button>
+        <button id="nextBtn" class="btn icon-btn" title="下一步 (→)">▶</button>
+        <button id="lastBtn" class="btn icon-btn" title="跳到结束">⏭</button>
+        <input type="range" id="progressSlider" min="0" max="0" value="0" step="1" class="progress-slider">
+        <span id="stepCounter" class="step-counter">0 / 0</span>
+        <label class="speed-label">
+          速度
+          <input type="range" id="speedSlider" min="1" max="10" value="5">
+        </label>
+      </div>
+
+      <div class="current-step-banner" id="currentStepBanner">
+        运行代码以开始可视化 —— 每一步会展示当前执行到的代码行、发生的变化，以及变量的最新取值。
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <section class="panel-block frames-block">
+        <h2>调用栈 &amp; 变量</h2>
+        <div id="framesView" class="frames-view">
+          <p class="empty-hint">尚未运行</p>
+        </div>
+      </section>
+
+      <section class="panel-block timeline-block">
+        <h2>执行时间线</h2>
+        <div id="timelineView" class="timeline-view">
+          <p class="empty-hint">尚未运行</p>
+        </div>
+      </section>
+
+      <section class="panel-block console-block">
+        <h2>控制台输出</h2>
+        <div id="consoleView" class="console-view">
+          <p class="empty-hint">（无输出）</p>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="app-footer">
+    <p>
+      支持大部分常用 JavaScript 语法：变量声明、if/for/while/do-while、函数与递归、数组/对象、解构、
+      模板字符串、try/catch/throw、switch 等。不支持 class、this、async/await。所有解析与执行均在浏览器本地完成，代码不会上传到任何服务器。
+    </p>
+  </footer>
+
+  <script src="vendor/acorn.js"></script>
+  <script src="js/interpreter.js"></script>
+  <script src="js/examples.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
