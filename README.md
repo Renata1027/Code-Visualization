@@ -16,7 +16,7 @@ python3 -m http.server 8080
 ## 功能
 
 - **双语言支持**：JavaScript（内置小型解释器）和 Python（基于浏览器内真实 CPython 执行 + 逐行追踪，几乎支持所有常见语法，包括 `class`）
-- **调用入口（LeetCode 风格）**：可选填写一个表达式来调用你代码里的函数/类，运行后在醒目的「输出结果」框中看到返回值
+- **多测试用例（LeetCode 风格）**：像 LeetCode 一样管理多个「用例」标签页，每个用例填一个调用表达式（如 `Solution().subsets([1,2,3])`）；点「运行」会一次性跑完所有用例，在「测试结果」里看到每个用例的输出，点某一行还能跳过去单步调试那个用例
 - 粘贴或选择示例代码，点击「运行并可视化」
 - 单步前进/后退、播放/暂停（可调速度）、进度条拖拽跳转
 - 当前执行行会在编辑器中高亮，并显示这一步做了什么
@@ -42,7 +42,8 @@ python3 -m http.server 8080
 - **JavaScript**：使用内置的 [Acorn](https://github.com/acornjs/acorn) 解析器解析代码，再用 `js/interpreter.js` 中实现的
   一个小型树遍历解释器逐语句执行；每执行完一条语句就记录一份「步骤快照」（当前行、调用栈、每个变量的值、发生了哪些变化）。
 - **Python**：通过 [Pyodide](https://pyodide.org/)（编译到 WebAssembly 的 CPython）在浏览器里真实运行你的代码，
-  用 `sys.settrace` 在每一行/每次函数调用与返回时记录同样格式的「步骤快照」（`js/py_tracer_src.js`）。
+  用 `sys.settrace` 在每一行/每次函数调用与返回时记录同样格式的「步骤快照」（追踪器源码见 `python/tracer.py`，
+  `build.js` 会把它作为字符串注入页面，运行时喂给 Pyodide 执行）。
 - 两种语言产出完全相同结构的步骤数据，因此界面渲染逻辑（`js/app.js`）是共用的。
 - 所有解析与执行都在你的浏览器本地完成（Python 首次使用除外，需要联网下载运行环境本身），代码不会上传到任何服务器。
 
@@ -56,11 +57,18 @@ build.js              构建脚本：node build.js 会重新生成 index.html
 index.html            生成产物：完全自包含的单文件页面（直接使用这个文件）
 css/style.css         样式（支持浅色/深色主题、移动端适配）
 js/interpreter.js     JavaScript 解释器：解析并生成逐行执行的步骤快照
-js/py_tracer_src.js   Python 追踪器源码（作为字符串注入 Pyodide 中执行）
-js/py_runner.js       负责懒加载 Pyodide、桥接 Python 追踪器与页面
+python/tracer.py      Python 追踪器源码 —— 是一个普通的 .py 文件，可以直接用 python3 检查/测试
+js/py_runner.js       负责懒加载 Pyodide、把 python/tracer.py 的内容喂给它执行、桥接页面
 js/examples.js        内置示例代码（JS 和 Python 各一套）
-js/app.js             界面逻辑：编辑器、语言切换、播放控制、变量/时间线/控制台渲染
+js/app.js             界面逻辑：编辑器、语言切换、多测试用例、播放控制、变量/时间线/控制台渲染
 vendor/acorn.js        第三方 JS 解析器 Acorn（本地内置，无需联网）
 ```
 
-若修改了 `css/`、`js/` 下的源文件或 `index.template.html`，运行 `node build.js` 重新生成 `index.html`。
+若修改了 `css/`、`js/`、`python/tracer.py` 或 `index.template.html`，运行 `node build.js` 重新生成 `index.html`。
+
+**关于 `python/tracer.py`**：这是唯一的源文件（一个真正能用 `python3 python/tracer.py` 或直接 `import` 测试的
+普通 Python 文件），`build.js` 用 `` String.raw`...` `` 把它整个包成一个 JS 字符串塞进页面——用 `String.raw` 而不是普通
+模板字符串是关键：普通模板字符串会把源码里 `'\n'` 这样的 Python 转义序列在浏览器解析这个 `<script>` 标签时就当作
+"真的换行符" 解码掉，导致喂给 Pyodide 的 Python 源码里出现裸露的换行，触发 `SyntaxError: unterminated string
+literal`（这个坑真实地导致过一版 Python 模式完全跑不起来）。`build.js` 里也加了一个检查：如果
+`python/tracer.py` 出现反引号或 `${`，会直接构建失败提示修正，防止再踩同一类坑。

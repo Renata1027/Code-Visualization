@@ -45,16 +45,24 @@
         </div>
       </div>
 
-      <div class="entry-row">
-        <span class="entry-label">调用入口 <span class="entry-hint">（可选，LeetCode 风格：写一个表达式来调用你的函数/类）</span></span>
-        <input type="text" id="entryInput" class="entry-input" placeholder="例如：Solution().subsets([1, 2, 3])">
+      <div class="testcase-block">
+        <div class="tc-tabs" id="tcTabs"></div>
+        <div class="tc-body">
+          <span class="entry-label">调用表达式 <span class="entry-hint">（可选，LeetCode 风格：写一个表达式来调用你的函数/类）</span></span>
+          <input type="text" id="entryInput" class="entry-input" placeholder="例如：Solution().subsets([1, 2, 3])">
+        </div>
       </div>
 
       <div id="statusBox" class="status-box" hidden></div>
       <div id="errorBox" class="error-box" hidden></div>
       <div id="outputResultBox" class="output-result-box" hidden>
-        <span class="orb-label">输出结果</span>
+        <span class="orb-label">当前用例输出</span>
         <code id="outputResultValue"></code>
+      </div>
+
+      <div id="resultsBlock" class="results-block" hidden>
+        <div class="results-header">测试结果</div>
+        <div id="resultsList" class="results-list"></div>
       </div>
 
       <div class="playback-bar">

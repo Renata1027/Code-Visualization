@@ -13,10 +13,24 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
 const css = read('css/style.css');
 const acorn = read('vendor/acorn.js');
 const interpreter = read('js/interpreter.js');
-const pyTracer = read('js/py_tracer_src.js');
+// python/tracer.py is the single source of truth for the Python tracer; it is
+// wrapped here (not hand-copied into a .js file) specifically to avoid the
+// two ever drifting apart. String.raw is required, not a plain template
+// literal: the tracer source contains Python escapes like '\n' that a normal
+// template literal would decode into real newline characters, corrupting the
+// embedded Python (this broke Python mode once already - see git history).
+const pyTracerPy = read('python/tracer.py');
+const pyTracer = 'window.PY_TRACER_SRC = String.raw`\n' + pyTracerPy + '`;\n';
 const pyRunner = read('js/py_runner.js');
 const examples = read('js/examples.js');
 const app = read('js/app.js');
+
+if (/`|\$\{/.test(pyTracerPy)) {
+  throw new Error(
+    'python/tracer.py contains a backtick or ${ — either would break out of the ' +
+    'String.raw template literal it gets embedded in. Rewrite to avoid them.'
+  );
+}
 
 let html = read('index.template.html');
 

@@ -1,4 +1,3 @@
-window.PY_TRACER_SRC = `
 
 import sys as _sys, time as _time
 
@@ -214,4 +213,3 @@ def _run(source, entry_expr):
         _sys.stdout = _sys.__stdout__
         _sys.stderr = _sys.__stderr__
     return {'steps': _steps, 'output': _output, 'error': error}
-`;

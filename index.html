@@ -276,6 +276,124 @@ select { max-width: 220px; }
   tab-size: 2;
 }
 
+/* ---- test cases (LeetCode-style tabs) ---- */
+.testcase-block {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.tc-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 6px 0;
+  overflow-x: auto;
+}
+.tc-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tc-tab.active { background: var(--panel-bg); color: var(--accent); font-weight: 600; }
+.tc-tab .tc-close {
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+.tc-tab .tc-close:hover { background: rgba(127,127,127,0.25); color: var(--text); }
+.tc-add {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 5px 9px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 8px;
+}
+.tc-add:hover { background: rgba(127,127,127,0.15); color: var(--accent); }
+.tc-body {
+  background: var(--panel-bg);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ---- test results ---- */
+.results-block {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.results-header {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  padding: 8px 12px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.results-list { background: var(--panel-bg); }
+.result-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.result-row:last-child { border-bottom: none; }
+.result-row:hover { background: var(--bg); }
+.result-row.active-case { background: var(--accent-dim); }
+.result-row .rr-status {
+  flex: 0 0 auto;
+  width: 18px;
+  text-align: center;
+  font-weight: 700;
+}
+.result-row.ok .rr-status { color: var(--ok); }
+.result-row.fail .rr-status { color: var(--err-text); }
+.result-row .rr-name { flex: 0 0 auto; color: var(--text-dim); min-width: 52px; }
+.result-row .rr-entry {
+  flex: 0 0 auto;
+  font-family: ui-monospace, monospace;
+  color: var(--text-dim);
+  max-width: 32%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-row .rr-output {
+  flex: 1;
+  font-family: ui-monospace, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-row.fail .rr-output { color: var(--err-text); }
+
 /* ---- entry / status / error / output-result ---- */
 .entry-row {
   margin-top: 10px;
@@ -533,16 +651,24 @@ select { max-width: 220px; }
         </div>
       </div>
 
-      <div class="entry-row">
-        <span class="entry-label">调用入口 <span class="entry-hint">（可选，LeetCode 风格：写一个表达式来调用你的函数/类）</span></span>
-        <input type="text" id="entryInput" class="entry-input" placeholder="例如：Solution().subsets([1, 2, 3])">
+      <div class="testcase-block">
+        <div class="tc-tabs" id="tcTabs"></div>
+        <div class="tc-body">
+          <span class="entry-label">调用表达式 <span class="entry-hint">（可选，LeetCode 风格：写一个表达式来调用你的函数/类）</span></span>
+          <input type="text" id="entryInput" class="entry-input" placeholder="例如：Solution().subsets([1, 2, 3])">
+        </div>
       </div>
 
       <div id="statusBox" class="status-box" hidden></div>
       <div id="errorBox" class="error-box" hidden></div>
       <div id="outputResultBox" class="output-result-box" hidden>
-        <span class="orb-label">输出结果</span>
+        <span class="orb-label">当前用例输出</span>
         <code id="outputResultValue"></code>
+      </div>
+
+      <div id="resultsBlock" class="results-block" hidden>
+        <div class="results-header">测试结果</div>
+        <div id="resultsList" class="results-list"></div>
       </div>
 
       <div class="playback-bar">
@@ -7689,7 +7815,7 @@ select { max-width: 220px; }
 
   </script>
   <script>
-window.PY_TRACER_SRC = `
+window.PY_TRACER_SRC = String.raw`
 
 import sys as _sys, time as _time
 
@@ -8148,10 +8274,13 @@ print('result =', result)
     lineHighlight: document.getElementById('lineHighlight'),
     codeInput: document.getElementById('codeInput'),
     entryInput: document.getElementById('entryInput'),
+    tcTabs: document.getElementById('tcTabs'),
     statusBox: document.getElementById('statusBox'),
     errorBox: document.getElementById('errorBox'),
     outputResultBox: document.getElementById('outputResultBox'),
     outputResultValue: document.getElementById('outputResultValue'),
+    resultsBlock: document.getElementById('resultsBlock'),
+    resultsList: document.getElementById('resultsList'),
     firstBtn: document.getElementById('firstBtn'),
     prevBtn: document.getElementById('prevBtn'),
     playBtn: document.getElementById('playBtn'),
@@ -8175,6 +8304,8 @@ print('result =', result)
     playTimer: null,
     userLineCount: 0,
     running: false,
+    cases: [{ name: '用例 1', entry: '' }],
+    activeCase: 0,
   };
 
   // ---------------- language switch ----------------
@@ -8208,8 +8339,12 @@ print('result =', result)
     const ex = (window.EXAMPLES[state.language] || {})[name];
     if (!ex) return;
     el.codeInput.value = ex.code;
+    state.cases = [{ name: '用例 1', entry: ex.entry || '' }];
+    state.activeCase = 0;
     el.entryInput.value = ex.entry || '';
     el.exampleSelect.value = name;
+    renderTabs();
+    hideResults();
     resizeEditor();
     renderGutter();
     onCodeChanged();
@@ -8218,6 +8353,67 @@ print('result =', result)
   el.exampleSelect.addEventListener('change', () => {
     if (el.exampleSelect.value) loadExample(el.exampleSelect.value);
   });
+
+  // ---------------- test case tabs (LeetCode-style) ----------------
+  function renderTabs() {
+    el.tcTabs.innerHTML = '';
+    state.cases.forEach((c, i) => {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'tc-tab' + (i === state.activeCase ? ' active' : '');
+      const closeHtml = state.cases.length > 1 ? `<span class="tc-close" data-i="${i}" title="删除用例">×</span>` : '';
+      tab.innerHTML = `<span>${escapeHtml(c.name)}</span>${closeHtml}`;
+      tab.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tc-close')) {
+          e.stopPropagation();
+          removeCase(i);
+          return;
+        }
+        switchCase(i);
+      });
+      el.tcTabs.appendChild(tab);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'tc-add';
+    addBtn.textContent = '+ 用例';
+    addBtn.title = '添加一个测试用例';
+    addBtn.addEventListener('click', addCase);
+    el.tcTabs.appendChild(addBtn);
+  }
+
+  function syncActiveEntry() {
+    if (state.cases[state.activeCase]) state.cases[state.activeCase].entry = el.entryInput.value;
+  }
+
+  function switchCase(i) {
+    syncActiveEntry();
+    state.activeCase = i;
+    el.entryInput.value = state.cases[i].entry || '';
+    renderTabs();
+    showOutputResult(null);
+    if (el.resultsBlock && !el.resultsBlock.hidden) {
+      Array.from(el.resultsList.children).forEach((row, idx) => row.classList.toggle('active-case', idx === i));
+    }
+  }
+
+  function addCase() {
+    syncActiveEntry();
+    state.cases.push({ name: '用例 ' + (state.cases.length + 1), entry: state.cases[state.activeCase].entry || '' });
+    state.activeCase = state.cases.length - 1;
+    el.entryInput.value = state.cases[state.activeCase].entry || '';
+    renderTabs();
+  }
+
+  function removeCase(i) {
+    if (state.cases.length <= 1) return;
+    state.cases.splice(i, 1);
+    state.cases.forEach((c, idx) => { c.name = '用例 ' + (idx + 1); });
+    if (state.activeCase >= state.cases.length) state.activeCase = state.cases.length - 1;
+    else if (state.activeCase > i) state.activeCase--;
+    el.entryInput.value = state.cases[state.activeCase].entry || '';
+    renderTabs();
+  }
 
   // ---------------- editor (textarea + gutter) ----------------
   function currentLineCount() {
@@ -8259,7 +8455,7 @@ print('result =', result)
       onCodeChanged();
     }
   });
-  el.entryInput.addEventListener('input', onCodeChanged);
+  el.entryInput.addEventListener('input', () => { syncActiveEntry(); onCodeChanged(); });
 
   function onCodeChanged() {
     if (state.ctx) {
@@ -8272,8 +8468,12 @@ print('result =', result)
 
   el.clearBtn.addEventListener('click', () => {
     el.codeInput.value = '';
+    state.cases = [{ name: '用例 1', entry: '' }];
+    state.activeCase = 0;
     el.entryInput.value = '';
     el.exampleSelect.value = '';
+    renderTabs();
+    hideResults();
     resizeEditor();
     resetPlayback();
     renderGutter();
@@ -8299,14 +8499,50 @@ print('result =', result)
     el.outputResultValue.textContent = text;
   }
 
+  function hideResults() {
+    el.resultsBlock.hidden = true;
+    el.resultsList.innerHTML = '';
+  }
+
+  function renderResults(results, activeIdx) {
+    const withEntry = results.filter((r) => !r.skip);
+    if (withEntry.length === 0) { hideResults(); return; }
+    el.resultsBlock.hidden = false;
+    el.resultsList.innerHTML = '';
+    results.forEach((r, i) => {
+      if (r.skip) return;
+      const row = document.createElement('div');
+      row.className = 'result-row ' + (r.ok ? 'ok' : 'fail') + (i === activeIdx ? ' active-case' : '');
+      row.innerHTML = `<span class="rr-status">${r.ok ? '✓' : '✕'}</span>` +
+        `<span class="rr-name">${escapeHtml(r.name)}</span>` +
+        `<span class="rr-entry">${escapeHtml(r.entry)}</span>` +
+        `<span class="rr-output">${escapeHtml(String(r.output))}</span>`;
+      row.title = String(r.output);
+      row.addEventListener('click', () => {
+        if (state.running) return;
+        switchCase(i);
+        runCode();
+      });
+      el.resultsList.appendChild(row);
+    });
+  }
+
   // ---------------- run ----------------
   el.runBtn.addEventListener('click', runCode);
+
+  async function runOnce(code, entry) {
+    if (state.language === 'python') {
+      return await window.PyRunner.runPythonCode(code, entry, showStatus);
+    }
+    const fullCode = code + (entry ? `\nvar ${ENTRY_VAR} = (${entry});\n` : '');
+    return window.CodeViz.runCode(fullCode);
+  }
 
   async function runCode() {
     if (state.running) return;
     stopPlaying();
+    syncActiveEntry();
     const code = el.codeInput.value;
-    const entry = el.entryInput.value.trim();
     if (!code.trim()) { showError('请先输入或粘贴一些代码。'); return; }
 
     state.running = true;
@@ -8315,52 +8551,73 @@ print('result =', result)
     showOutputResult(null);
     state.userLineCount = code.split('\n').length;
 
+    const activeEntry = (state.cases[state.activeCase].entry || '').trim();
     let ctx;
     try {
-      if (state.language === 'python') {
-        showStatus('准备运行…');
-        ctx = await window.PyRunner.runPythonCode(code, entry, showStatus);
-      } else {
-        const fullCode = code + (entry ? `\nvar ${ENTRY_VAR} = (${entry});\n` : '');
-        ctx = window.CodeViz.runCode(fullCode);
+      if (state.language === 'python') showStatus('准备运行…');
+      ctx = await runOnce(code, activeEntry);
+
+      state.ctx = ctx;
+
+      const hits = {};
+      ctx.steps.forEach((s) => { hits[s.line] = (hits[s.line] || 0) + 1; });
+      state.lineHits = hits;
+      renderGutter();
+
+      if (ctx.error && ctx.steps.length === 0) {
+        showError(ctx.error);
+        state.index = -1;
+        el.progressSlider.max = 0;
+        el.progressSlider.value = 0;
+        renderTimeline();
+        renderFrames(null);
+        renderConsole(0);
+        updateStepCounter();
+        setControlsEnabled(false);
+        el.currentStepBanner.textContent = '代码存在错误，请修正后重新运行。';
+        hideResults();
+        return;
       }
+
+      if (ctx.error) showError(ctx.error);
+
+      setControlsEnabled(ctx.steps.length > 0);
+      el.progressSlider.max = Math.max(0, ctx.steps.length - 1);
+      renderTimeline();
+      goToStep(0);
+
+      if (activeEntry) {
+        const result = findEntryResult(ctx);
+        showOutputResult(result === undefined ? null : result);
+      }
+
+      // Run every other case (that has a call expression) to populate the
+      // "测试结果" summary, LeetCode-style. The active case reuses `ctx`.
+      const results = [];
+      for (let i = 0; i < state.cases.length; i++) {
+        const c = state.cases[i];
+        const entry = (c.entry || '').trim();
+        if (!entry) { results.push({ skip: true }); continue; }
+        let caseCtx;
+        if (i === state.activeCase) caseCtx = ctx;
+        else {
+          if (state.language === 'python') showStatus(`正在运行 ${c.name}…`);
+          caseCtx = await runOnce(code, entry);
+        }
+        const failed = !!caseCtx.error && caseCtx.steps.length === 0;
+        const val = failed ? undefined : findEntryResult(caseCtx);
+        results.push({
+          name: c.name,
+          entry,
+          ok: !failed,
+          output: failed ? caseCtx.error : (val === undefined ? '(无返回值)' : val),
+        });
+      }
+      renderResults(results, state.activeCase);
     } finally {
       showStatus(null);
       state.running = false;
       el.runBtn.disabled = false;
-    }
-
-    state.ctx = ctx;
-
-    const hits = {};
-    ctx.steps.forEach((s) => { hits[s.line] = (hits[s.line] || 0) + 1; });
-    state.lineHits = hits;
-    renderGutter();
-
-    if (ctx.error && ctx.steps.length === 0) {
-      showError(ctx.error);
-      state.index = -1;
-      el.progressSlider.max = 0;
-      el.progressSlider.value = 0;
-      renderTimeline();
-      renderFrames(null);
-      renderConsole(0);
-      updateStepCounter();
-      setControlsEnabled(false);
-      el.currentStepBanner.textContent = '代码存在错误，请修正后重新运行。';
-      return;
-    }
-
-    if (ctx.error) showError(ctx.error);
-
-    setControlsEnabled(ctx.steps.length > 0);
-    el.progressSlider.max = Math.max(0, ctx.steps.length - 1);
-    renderTimeline();
-    goToStep(0);
-
-    if (entry) {
-      const result = findEntryResult(ctx);
-      showOutputResult(result === undefined ? null : result);
     }
   }
 
@@ -8543,6 +8800,7 @@ print('result =', result)
     showError(null);
     showOutputResult(null);
     showStatus(null);
+    hideResults();
     renderFrames(null);
     renderConsole(0);
     renderTimeline();

@@ -16,10 +16,13 @@
     lineHighlight: document.getElementById('lineHighlight'),
     codeInput: document.getElementById('codeInput'),
     entryInput: document.getElementById('entryInput'),
+    tcTabs: document.getElementById('tcTabs'),
     statusBox: document.getElementById('statusBox'),
     errorBox: document.getElementById('errorBox'),
     outputResultBox: document.getElementById('outputResultBox'),
     outputResultValue: document.getElementById('outputResultValue'),
+    resultsBlock: document.getElementById('resultsBlock'),
+    resultsList: document.getElementById('resultsList'),
     firstBtn: document.getElementById('firstBtn'),
     prevBtn: document.getElementById('prevBtn'),
     playBtn: document.getElementById('playBtn'),
@@ -43,6 +46,8 @@
     playTimer: null,
     userLineCount: 0,
     running: false,
+    cases: [{ name: '用例 1', entry: '' }],
+    activeCase: 0,
   };
 
   // ---------------- language switch ----------------
@@ -76,8 +81,12 @@
     const ex = (window.EXAMPLES[state.language] || {})[name];
     if (!ex) return;
     el.codeInput.value = ex.code;
+    state.cases = [{ name: '用例 1', entry: ex.entry || '' }];
+    state.activeCase = 0;
     el.entryInput.value = ex.entry || '';
     el.exampleSelect.value = name;
+    renderTabs();
+    hideResults();
     resizeEditor();
     renderGutter();
     onCodeChanged();
@@ -86,6 +95,67 @@
   el.exampleSelect.addEventListener('change', () => {
     if (el.exampleSelect.value) loadExample(el.exampleSelect.value);
   });
+
+  // ---------------- test case tabs (LeetCode-style) ----------------
+  function renderTabs() {
+    el.tcTabs.innerHTML = '';
+    state.cases.forEach((c, i) => {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'tc-tab' + (i === state.activeCase ? ' active' : '');
+      const closeHtml = state.cases.length > 1 ? `<span class="tc-close" data-i="${i}" title="删除用例">×</span>` : '';
+      tab.innerHTML = `<span>${escapeHtml(c.name)}</span>${closeHtml}`;
+      tab.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tc-close')) {
+          e.stopPropagation();
+          removeCase(i);
+          return;
+        }
+        switchCase(i);
+      });
+      el.tcTabs.appendChild(tab);
+    });
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'tc-add';
+    addBtn.textContent = '+ 用例';
+    addBtn.title = '添加一个测试用例';
+    addBtn.addEventListener('click', addCase);
+    el.tcTabs.appendChild(addBtn);
+  }
+
+  function syncActiveEntry() {
+    if (state.cases[state.activeCase]) state.cases[state.activeCase].entry = el.entryInput.value;
+  }
+
+  function switchCase(i) {
+    syncActiveEntry();
+    state.activeCase = i;
+    el.entryInput.value = state.cases[i].entry || '';
+    renderTabs();
+    showOutputResult(null);
+    if (el.resultsBlock && !el.resultsBlock.hidden) {
+      Array.from(el.resultsList.children).forEach((row, idx) => row.classList.toggle('active-case', idx === i));
+    }
+  }
+
+  function addCase() {
+    syncActiveEntry();
+    state.cases.push({ name: '用例 ' + (state.cases.length + 1), entry: state.cases[state.activeCase].entry || '' });
+    state.activeCase = state.cases.length - 1;
+    el.entryInput.value = state.cases[state.activeCase].entry || '';
+    renderTabs();
+  }
+
+  function removeCase(i) {
+    if (state.cases.length <= 1) return;
+    state.cases.splice(i, 1);
+    state.cases.forEach((c, idx) => { c.name = '用例 ' + (idx + 1); });
+    if (state.activeCase >= state.cases.length) state.activeCase = state.cases.length - 1;
+    else if (state.activeCase > i) state.activeCase--;
+    el.entryInput.value = state.cases[state.activeCase].entry || '';
+    renderTabs();
+  }
 
   // ---------------- editor (textarea + gutter) ----------------
   function currentLineCount() {
@@ -127,7 +197,7 @@
       onCodeChanged();
     }
   });
-  el.entryInput.addEventListener('input', onCodeChanged);
+  el.entryInput.addEventListener('input', () => { syncActiveEntry(); onCodeChanged(); });
 
   function onCodeChanged() {
     if (state.ctx) {
@@ -140,8 +210,12 @@
 
   el.clearBtn.addEventListener('click', () => {
     el.codeInput.value = '';
+    state.cases = [{ name: '用例 1', entry: '' }];
+    state.activeCase = 0;
     el.entryInput.value = '';
     el.exampleSelect.value = '';
+    renderTabs();
+    hideResults();
     resizeEditor();
     resetPlayback();
     renderGutter();
@@ -167,14 +241,50 @@
     el.outputResultValue.textContent = text;
   }
 
+  function hideResults() {
+    el.resultsBlock.hidden = true;
+    el.resultsList.innerHTML = '';
+  }
+
+  function renderResults(results, activeIdx) {
+    const withEntry = results.filter((r) => !r.skip);
+    if (withEntry.length === 0) { hideResults(); return; }
+    el.resultsBlock.hidden = false;
+    el.resultsList.innerHTML = '';
+    results.forEach((r, i) => {
+      if (r.skip) return;
+      const row = document.createElement('div');
+      row.className = 'result-row ' + (r.ok ? 'ok' : 'fail') + (i === activeIdx ? ' active-case' : '');
+      row.innerHTML = `<span class="rr-status">${r.ok ? '✓' : '✕'}</span>` +
+        `<span class="rr-name">${escapeHtml(r.name)}</span>` +
+        `<span class="rr-entry">${escapeHtml(r.entry)}</span>` +
+        `<span class="rr-output">${escapeHtml(String(r.output))}</span>`;
+      row.title = String(r.output);
+      row.addEventListener('click', () => {
+        if (state.running) return;
+        switchCase(i);
+        runCode();
+      });
+      el.resultsList.appendChild(row);
+    });
+  }
+
   // ---------------- run ----------------
   el.runBtn.addEventListener('click', runCode);
+
+  async function runOnce(code, entry) {
+    if (state.language === 'python') {
+      return await window.PyRunner.runPythonCode(code, entry, showStatus);
+    }
+    const fullCode = code + (entry ? `\nvar ${ENTRY_VAR} = (${entry});\n` : '');
+    return window.CodeViz.runCode(fullCode);
+  }
 
   async function runCode() {
     if (state.running) return;
     stopPlaying();
+    syncActiveEntry();
     const code = el.codeInput.value;
-    const entry = el.entryInput.value.trim();
     if (!code.trim()) { showError('请先输入或粘贴一些代码。'); return; }
 
     state.running = true;
@@ -183,52 +293,73 @@
     showOutputResult(null);
     state.userLineCount = code.split('\n').length;
 
+    const activeEntry = (state.cases[state.activeCase].entry || '').trim();
     let ctx;
     try {
-      if (state.language === 'python') {
-        showStatus('准备运行…');
-        ctx = await window.PyRunner.runPythonCode(code, entry, showStatus);
-      } else {
-        const fullCode = code + (entry ? `\nvar ${ENTRY_VAR} = (${entry});\n` : '');
-        ctx = window.CodeViz.runCode(fullCode);
+      if (state.language === 'python') showStatus('准备运行…');
+      ctx = await runOnce(code, activeEntry);
+
+      state.ctx = ctx;
+
+      const hits = {};
+      ctx.steps.forEach((s) => { hits[s.line] = (hits[s.line] || 0) + 1; });
+      state.lineHits = hits;
+      renderGutter();
+
+      if (ctx.error && ctx.steps.length === 0) {
+        showError(ctx.error);
+        state.index = -1;
+        el.progressSlider.max = 0;
+        el.progressSlider.value = 0;
+        renderTimeline();
+        renderFrames(null);
+        renderConsole(0);
+        updateStepCounter();
+        setControlsEnabled(false);
+        el.currentStepBanner.textContent = '代码存在错误，请修正后重新运行。';
+        hideResults();
+        return;
       }
+
+      if (ctx.error) showError(ctx.error);
+
+      setControlsEnabled(ctx.steps.length > 0);
+      el.progressSlider.max = Math.max(0, ctx.steps.length - 1);
+      renderTimeline();
+      goToStep(0);
+
+      if (activeEntry) {
+        const result = findEntryResult(ctx);
+        showOutputResult(result === undefined ? null : result);
+      }
+
+      // Run every other case (that has a call expression) to populate the
+      // "测试结果" summary, LeetCode-style. The active case reuses `ctx`.
+      const results = [];
+      for (let i = 0; i < state.cases.length; i++) {
+        const c = state.cases[i];
+        const entry = (c.entry || '').trim();
+        if (!entry) { results.push({ skip: true }); continue; }
+        let caseCtx;
+        if (i === state.activeCase) caseCtx = ctx;
+        else {
+          if (state.language === 'python') showStatus(`正在运行 ${c.name}…`);
+          caseCtx = await runOnce(code, entry);
+        }
+        const failed = !!caseCtx.error && caseCtx.steps.length === 0;
+        const val = failed ? undefined : findEntryResult(caseCtx);
+        results.push({
+          name: c.name,
+          entry,
+          ok: !failed,
+          output: failed ? caseCtx.error : (val === undefined ? '(无返回值)' : val),
+        });
+      }
+      renderResults(results, state.activeCase);
     } finally {
       showStatus(null);
       state.running = false;
       el.runBtn.disabled = false;
-    }
-
-    state.ctx = ctx;
-
-    const hits = {};
-    ctx.steps.forEach((s) => { hits[s.line] = (hits[s.line] || 0) + 1; });
-    state.lineHits = hits;
-    renderGutter();
-
-    if (ctx.error && ctx.steps.length === 0) {
-      showError(ctx.error);
-      state.index = -1;
-      el.progressSlider.max = 0;
-      el.progressSlider.value = 0;
-      renderTimeline();
-      renderFrames(null);
-      renderConsole(0);
-      updateStepCounter();
-      setControlsEnabled(false);
-      el.currentStepBanner.textContent = '代码存在错误，请修正后重新运行。';
-      return;
-    }
-
-    if (ctx.error) showError(ctx.error);
-
-    setControlsEnabled(ctx.steps.length > 0);
-    el.progressSlider.max = Math.max(0, ctx.steps.length - 1);
-    renderTimeline();
-    goToStep(0);
-
-    if (entry) {
-      const result = findEntryResult(ctx);
-      showOutputResult(result === undefined ? null : result);
     }
   }
 
@@ -411,6 +542,7 @@
     showError(null);
     showOutputResult(null);
     showStatus(null);
+    hideResults();
     renderFrames(null);
     renderConsole(0);
     renderTimeline();
