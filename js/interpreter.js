@@ -493,6 +493,10 @@
       case 'VariableDeclaration': {
         node.declarations.forEach(d => {
           const val = d.init ? evalExpr(d.init, scope, ctx) : undefined;
+          if (typeof val === 'function' && val.__interpMeta && !val.__interpMeta.name && d.id.type === 'Identifier') {
+            val.__interpMeta.name = d.id.name;
+            try { Object.defineProperty(val, 'name', { value: d.id.name }); } catch (e) {}
+          }
           bindPattern(d.id, val, scope, node.kind, ctx);
         });
         recordStep(ctx, scope, node, short(srcOf(node, ctx)), 'decl');

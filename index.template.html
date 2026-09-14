@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>代码执行演变可视化 · Code Line Evolution Visualizer</title>
+<style>
+/*__INLINE_CSS__*/
+</style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-badge">▶</span>
+      <div>
+        <h1>代码执行演变可视化</h1>
+        <p class="subtitle">粘贴代码，逐行查看它运行时每一行、每个变量是如何变化的</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <section class="editor-panel">
+      <div class="toolbar">
+        <div class="lang-switch" id="langSwitch" role="tablist">
+          <button type="button" class="lang-btn active" data-lang="javascript">JavaScript</button>
+          <button type="button" class="lang-btn" data-lang="python">Python</button>
+        </div>
+        <select id="exampleSelect" title="加载示例代码">
+          <option value="">— 选择示例代码 —</option>
+        </select>
+        <button id="runBtn" class="btn btn-primary">▶ 运行并可视化</button>
+        <button id="clearBtn" class="btn">清空</button>
+        <label class="heatmap-toggle">
+          <input type="checkbox" id="heatmapToggle" checked>
+          执行热度
+        </label>
+      </div>
+
+      <div class="editor-wrap" id="editorWrap">
+        <div class="gutter" id="gutter"></div>
+        <div class="code-area" id="codeArea">
+          <div class="line-highlight" id="lineHighlight" hidden></div>
+          <textarea id="codeInput" spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off"></textarea>
+        </div>
+      </div>
+
+      <div class="entry-row">
+        <span class="entry-label">调用入口 <span class="entry-hint">（可选，LeetCode 风格：写一个表达式来调用你的函数/类）</span></span>
+        <input type="text" id="entryInput" class="entry-input" placeholder="例如：Solution().subsets([1, 2, 3])">
+      </div>
+
+      <div id="statusBox" class="status-box" hidden></div>
+      <div id="errorBox" class="error-box" hidden></div>
+      <div id="outputResultBox" class="output-result-box" hidden>
+        <span class="orb-label">输出结果</span>
+        <code id="outputResultValue"></code>
+      </div>
+
+      <div class="playback-bar">
+        <button id="firstBtn" class="btn icon-btn" title="回到开始">⏮</button>
+        <button id="prevBtn" class="btn icon-btn" title="上一步 (←)">◀</button>
+        <button id="playBtn" class="btn icon-btn" title="播放/暂停 (空格)">▶</button>
+        <button id="nextBtn" class="btn icon-btn" title="下一步 (→)">▶</button>
+        <button id="lastBtn" class="btn icon-btn" title="跳到结束">⏭</button>
+        <input type="range" id="progressSlider" min="0" max="0" value="0" step="1" class="progress-slider">
+        <span id="stepCounter" class="step-counter">0 / 0</span>
+        <label class="speed-label">
+          速度
+          <input type="range" id="speedSlider" min="1" max="10" value="5">
+        </label>
+      </div>
+
+      <div class="current-step-banner" id="currentStepBanner">
+        运行代码以开始可视化 —— 每一步会展示当前执行到的代码行、发生的变化，以及变量的最新取值。
+      </div>
+    </section>
+
+    <aside class="side-panel">
+      <section class="panel-block frames-block">
+        <h2>调用栈 &amp; 变量</h2>
+        <div id="framesView" class="frames-view">
+          <p class="empty-hint">尚未运行</p>
+        </div>
+      </section>
+
+      <section class="panel-block timeline-block">
+        <h2>执行时间线</h2>
+        <div id="timelineView" class="timeline-view">
+          <p class="empty-hint">尚未运行</p>
+        </div>
+      </section>
+
+      <section class="panel-block console-block">
+        <h2>控制台输出</h2>
+        <div id="consoleView" class="console-view">
+          <p class="empty-hint">（无输出）</p>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="app-footer">
+    <p>
+      <strong>JavaScript</strong>：支持变量声明、if/for/while/do-while、函数与递归、数组/对象、解构、模板字符串、try/catch/throw、switch 等；不支持 class、this、async/await。
+      <strong>Python</strong>：基于真实的 CPython（通过浏览器内运行的 Pyodide）执行并逐行追踪，支持绝大多数常见语法，包括 class；首次运行 Python 需要联网下载运行环境。
+      所有代码均在你的浏览器本地运行，不会上传到任何服务器。
+    </p>
+  </footer>
+
+  <script>
+//__INLINE_ACORN__
+  </script>
+  <script>
+//__INLINE_INTERPRETER__
+  </script>
+  <script>
+//__INLINE_PY_TRACER__
+  </script>
+  <script>
+//__INLINE_PY_RUNNER__
+  </script>
+  <script>
+//__INLINE_EXAMPLES__
+  </script>
+  <script>
+//__INLINE_APP__
+  </script>
+</body>
+</html>

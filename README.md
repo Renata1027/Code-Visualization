@@ -1,12 +1,12 @@
 # 代码执行演变可视化 (Code Line Evolution Visualizer)
 
-粘贴一段 JavaScript 代码，逐步查看它运行时**每一行**、**每个变量**是如何变化的 —— 帮助你理解代码的实际执行过程。
+粘贴一段 JavaScript 或 Python 代码，逐步查看它运行时**每一行**、**每个变量**是如何变化的 —— 帮助你理解代码的实际执行过程。支持 LeetCode 风格的「调用入口」：写一个表达式（如 `Solution().subsets([1,2,3])`）来调用你的函数/类并直接看到返回结果。
 
 ## 使用方法
 
-直接用浏览器打开 `index.html` 即可使用（无需安装任何依赖、无需联网，也不需要构建步骤）。
+`index.html` 是一个**完全自包含**的单文件页面（CSS、JS 解释器、Python 追踪器全部内联），直接用浏览器打开即可使用，不依赖任何同级文件——即使把这一个文件单独拷走也能正常运行。JavaScript 模式完全离线可用；Python 模式首次运行需要联网，从 CDN 下载浏览器内 Python 运行环境（[Pyodide](https://pyodide.org/)，几 MB，只需下载一次）。
 
-也可以用任意静态文件服务器打开，例如：
+也可以用任意静态文件服务器打开：
 
 ```bash
 python3 -m http.server 8080
@@ -15,37 +15,52 @@ python3 -m http.server 8080
 
 ## 功能
 
-- 粘贴或选择示例 JavaScript 代码，点击「运行并可视化」
+- **双语言支持**：JavaScript（内置小型解释器）和 Python（基于浏览器内真实 CPython 执行 + 逐行追踪，几乎支持所有常见语法，包括 `class`）
+- **调用入口（LeetCode 风格）**：可选填写一个表达式来调用你代码里的函数/类，运行后在醒目的「输出结果」框中看到返回值
+- 粘贴或选择示例代码，点击「运行并可视化」
 - 单步前进/后退、播放/暂停（可调速度）、进度条拖拽跳转
 - 当前执行行会在编辑器中高亮，并显示这一步做了什么
 - 右侧面板实时展示：
   - **调用栈 & 变量**：当前每一层函数调用的局部变量，发生变化的变量会高亮显示
   - **执行时间线**：所有已执行步骤的列表，可点击跳转到任意一步
-  - **控制台输出**：`console.log` 的输出内容
+  - **控制台输出**：`console.log` / `print` 的输出内容
 - 编辑器行号旁显示每一行的「执行热度」（该行被执行了多少次），直观呈现循环/递归的热点
 
-## 支持的 JavaScript 语法
+## 支持的语法
 
-变量声明 (`let`/`const`/`var`)、赋值与复合赋值、`if/else`、`for`/`while`/`do-while`/`for-of`/`for-in`、
+**JavaScript**：变量声明 (`let`/`const`/`var`)、赋值与复合赋值、`if/else`、`for`/`while`/`do-while`/`for-of`/`for-in`、
 函数声明与箭头函数（含递归、闭包、默认参数、剩余参数）、数组与对象字面量、解构赋值、模板字符串、
 `try/catch/finally`/`throw`、`switch`、常用内置对象（`Math`、`JSON`、`Array`、`Object`、`Map`、`Set`、`Date` 等）。
+不支持：`class`、`this`、`async/await`、生成器函数、模块 `import/export`。
 
-暂不支持：`class`、`this`、`async/await`、生成器函数、模块 `import/export`。
+**Python**：基于真实 CPython 解释执行（通过 `sys.settrace` 逐行追踪），因此支持绝大多数标准语法，包括 `class`、
+装饰器、推导式、`try/except/finally`、上下文管理器等。不支持：`async`/`await`、多线程/多进程、访问本机文件系统或网络
+（Pyodide 沙箱本身的限制）。
 
 ## 工作原理
 
-所有代码的解析（使用内置的 [Acorn](https://github.com/acornjs/acorn) 解析器，见 `vendor/acorn.js`）与执行
-（`js/interpreter.js` 中实现的一个小型 JavaScript 解释器）都在浏览器本地完成。解释器在执行每一条语句时都会
-记录下一份「步骤快照」（当前行、调用栈、每个变量的值、发生了哪些变化），运行完成后 `js/app.js` 负责把这些
-步骤渲染成可以单步查看/播放的交互界面。代码不会上传到任何服务器。
+- **JavaScript**：使用内置的 [Acorn](https://github.com/acornjs/acorn) 解析器解析代码，再用 `js/interpreter.js` 中实现的
+  一个小型树遍历解释器逐语句执行；每执行完一条语句就记录一份「步骤快照」（当前行、调用栈、每个变量的值、发生了哪些变化）。
+- **Python**：通过 [Pyodide](https://pyodide.org/)（编译到 WebAssembly 的 CPython）在浏览器里真实运行你的代码，
+  用 `sys.settrace` 在每一行/每次函数调用与返回时记录同样格式的「步骤快照」（`js/py_tracer_src.js`）。
+- 两种语言产出完全相同结构的步骤数据，因此界面渲染逻辑（`js/app.js`）是共用的。
+- 所有解析与执行都在你的浏览器本地完成（Python 首次使用除外，需要联网下载运行环境本身），代码不会上传到任何服务器。
 
 ## 目录结构
 
+源码按文件拆分以便维护，`index.html` 由 `build.js` 从这些源文件内联生成（发布产物是单文件，不代表开发时是单文件）：
+
 ```
-index.html          页面结构
-css/style.css        样式（支持浅色/深色主题、移动端适配）
-js/interpreter.js    小型 JS 解释器：解析代码并生成逐行执行的步骤快照
-js/app.js            界面逻辑：编辑器、播放控制、变量/时间线/控制台渲染
-js/examples.js        内置示例代码
-vendor/acorn.js       第三方 JS 解析器 Acorn（本地内置，无需联网）
+index.template.html   页面骨架模板（含内联占位符）
+build.js              构建脚本：node build.js 会重新生成 index.html
+index.html            生成产物：完全自包含的单文件页面（直接使用这个文件）
+css/style.css         样式（支持浅色/深色主题、移动端适配）
+js/interpreter.js     JavaScript 解释器：解析并生成逐行执行的步骤快照
+js/py_tracer_src.js   Python 追踪器源码（作为字符串注入 Pyodide 中执行）
+js/py_runner.js       负责懒加载 Pyodide、桥接 Python 追踪器与页面
+js/examples.js        内置示例代码（JS 和 Python 各一套）
+js/app.js             界面逻辑：编辑器、语言切换、播放控制、变量/时间线/控制台渲染
+vendor/acorn.js        第三方 JS 解析器 Acorn（本地内置，无需联网）
 ```
+
+若修改了 `css/`、`js/` 下的源文件或 `index.template.html`，运行 `node build.js` 重新生成 `index.html`。

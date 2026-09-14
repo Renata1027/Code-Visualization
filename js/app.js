@@ -2,8 +2,10 @@
   'use strict';
 
   const LINE_HEIGHT = 21;
+  const ENTRY_VAR = '__entry_result__';
 
   const el = {
+    langSwitch: document.getElementById('langSwitch'),
     exampleSelect: document.getElementById('exampleSelect'),
     runBtn: document.getElementById('runBtn'),
     clearBtn: document.getElementById('clearBtn'),
@@ -13,7 +15,11 @@
     codeArea: document.getElementById('codeArea'),
     lineHighlight: document.getElementById('lineHighlight'),
     codeInput: document.getElementById('codeInput'),
+    entryInput: document.getElementById('entryInput'),
+    statusBox: document.getElementById('statusBox'),
     errorBox: document.getElementById('errorBox'),
+    outputResultBox: document.getElementById('outputResultBox'),
+    outputResultValue: document.getElementById('outputResultValue'),
     firstBtn: document.getElementById('firstBtn'),
     prevBtn: document.getElementById('prevBtn'),
     playBtn: document.getElementById('playBtn'),
@@ -29,17 +35,35 @@
   };
 
   let state = {
-    ctx: null,          // result of CodeViz.runCode()
-    lineHits: {},        // line -> execution count
-    index: -1,           // current step index
+    language: 'javascript',
+    ctx: null,
+    lineHits: {},
+    index: -1,
     playing: false,
     playTimer: null,
-    dirty: false,        // code changed since last run
+    userLineCount: 0,
+    running: false,
   };
+
+  // ---------------- language switch ----------------
+  el.langSwitch.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lang-btn');
+    if (!btn || btn.classList.contains('active')) return;
+    Array.from(el.langSwitch.children).forEach((b) => b.classList.toggle('active', b === btn));
+    state.language = btn.dataset.lang;
+    el.entryInput.placeholder = state.language === 'python'
+      ? '例如：Solution().subsets([1, 2, 3])'
+      : '例如：twoSum([2, 7, 11, 15], 9)';
+    populateExamples();
+    const names = Object.keys(window.EXAMPLES[state.language] || {});
+    if (names.length) loadExample(names[0]);
+    resetPlayback();
+  });
 
   // ---------------- example dropdown ----------------
   function populateExamples() {
-    const examples = window.CODE_EXAMPLES || {};
+    el.exampleSelect.innerHTML = '<option value="">— 选择示例代码 —</option>';
+    const examples = window.EXAMPLES[state.language] || {};
     Object.keys(examples).forEach((name) => {
       const opt = document.createElement('option');
       opt.value = name;
@@ -47,13 +71,20 @@
       el.exampleSelect.appendChild(opt);
     });
   }
-  el.exampleSelect.addEventListener('change', () => {
-    const name = el.exampleSelect.value;
-    if (!name) return;
-    el.codeInput.value = window.CODE_EXAMPLES[name];
-    onCodeChanged();
+
+  function loadExample(name) {
+    const ex = (window.EXAMPLES[state.language] || {})[name];
+    if (!ex) return;
+    el.codeInput.value = ex.code;
+    el.entryInput.value = ex.entry || '';
+    el.exampleSelect.value = name;
     resizeEditor();
     renderGutter();
+    onCodeChanged();
+  }
+
+  el.exampleSelect.addEventListener('change', () => {
+    if (el.exampleSelect.value) loadExample(el.exampleSelect.value);
   });
 
   // ---------------- editor (textarea + gutter) ----------------
@@ -86,10 +117,6 @@
     renderGutter();
     onCodeChanged();
   });
-  el.codeInput.addEventListener('scroll', () => {
-    // textarea itself never scrolls internally (overflow hidden + auto height),
-    // kept for safety in case of long unbroken lines with wrap=off.
-  });
   el.codeInput.addEventListener('keydown', (e) => {
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -100,11 +127,12 @@
       onCodeChanged();
     }
   });
+  el.entryInput.addEventListener('input', onCodeChanged);
 
   function onCodeChanged() {
     if (state.ctx) {
-      state.dirty = true;
       showError(null);
+      showOutputResult(null);
     }
   }
 
@@ -112,31 +140,65 @@
 
   el.clearBtn.addEventListener('click', () => {
     el.codeInput.value = '';
+    el.entryInput.value = '';
     el.exampleSelect.value = '';
     resizeEditor();
     resetPlayback();
     renderGutter();
-    onCodeChanged();
     el.codeInput.focus();
   });
 
-  // ---------------- run ----------------
+  // ---------------- status / error / output-result ----------------
+  function showStatus(msg) {
+    if (!msg) { el.statusBox.hidden = true; el.statusBox.textContent = ''; return; }
+    el.statusBox.hidden = false;
+    el.statusBox.textContent = msg;
+  }
+
   function showError(msg) {
     if (!msg) { el.errorBox.hidden = true; el.errorBox.textContent = ''; return; }
     el.errorBox.hidden = false;
     el.errorBox.textContent = msg;
   }
 
+  function showOutputResult(text) {
+    if (text === null || text === undefined) { el.outputResultBox.hidden = true; return; }
+    el.outputResultBox.hidden = false;
+    el.outputResultValue.textContent = text;
+  }
+
+  // ---------------- run ----------------
   el.runBtn.addEventListener('click', runCode);
 
-  function runCode() {
+  async function runCode() {
+    if (state.running) return;
     stopPlaying();
     const code = el.codeInput.value;
-    if (!code.trim()) { showError('请先输入或粘贴一些 JavaScript 代码。'); return; }
+    const entry = el.entryInput.value.trim();
+    if (!code.trim()) { showError('请先输入或粘贴一些代码。'); return; }
 
-    const ctx = window.CodeViz.runCode(code);
+    state.running = true;
+    el.runBtn.disabled = true;
+    showError(null);
+    showOutputResult(null);
+    state.userLineCount = code.split('\n').length;
+
+    let ctx;
+    try {
+      if (state.language === 'python') {
+        showStatus('准备运行…');
+        ctx = await window.PyRunner.runPythonCode(code, entry, showStatus);
+      } else {
+        const fullCode = code + (entry ? `\nvar ${ENTRY_VAR} = (${entry});\n` : '');
+        ctx = window.CodeViz.runCode(fullCode);
+      }
+    } finally {
+      showStatus(null);
+      state.running = false;
+      el.runBtn.disabled = false;
+    }
+
     state.ctx = ctx;
-    state.dirty = false;
 
     const hits = {};
     ctx.steps.forEach((s) => { hits[s.line] = (hits[s.line] || 0) + 1; });
@@ -157,14 +219,29 @@
       return;
     }
 
-    if (ctx.error) {
-      showError(ctx.error);
-    }
+    if (ctx.error) showError(ctx.error);
 
     setControlsEnabled(ctx.steps.length > 0);
     el.progressSlider.max = Math.max(0, ctx.steps.length - 1);
     renderTimeline();
     goToStep(0);
+
+    if (entry) {
+      const result = findEntryResult(ctx);
+      showOutputResult(result === undefined ? null : result);
+    }
+  }
+
+  function findEntryResult(ctx) {
+    for (let i = ctx.steps.length - 1; i >= 0; i--) {
+      const frames = ctx.steps[i].frames;
+      for (const f of frames) {
+        if (Object.prototype.hasOwnProperty.call(f.vars, ENTRY_VAR)) {
+          return f.vars[ENTRY_VAR];
+        }
+      }
+    }
+    return undefined;
   }
 
   function setControlsEnabled(enabled) {
@@ -179,16 +256,24 @@
     i = Math.max(0, Math.min(i, state.ctx.steps.length - 1));
     state.index = i;
     const step = state.ctx.steps[i];
+    const isEntryStep = step.line > state.userLineCount;
 
-    // line highlight
-    el.lineHighlight.hidden = false;
-    el.lineHighlight.style.top = (step.line - 1) * LINE_HEIGHT + 10 + 'px';
-    scrollLineIntoView(step.line);
+    if (isEntryStep) {
+      el.lineHighlight.hidden = true;
+    } else {
+      el.lineHighlight.hidden = false;
+      el.lineHighlight.style.top = (step.line - 1) * LINE_HEIGHT + 10 + 'px';
+      scrollLineIntoView(step.line);
+    }
 
-    // banner
-    const kindLabel = KIND_LABEL[step.kind] || '';
-    el.currentStepBanner.innerHTML =
-      `第 <b>${step.line}</b> 行　<span class="kw">${kindLabel}</span>　<code>${escapeHtml(step.label)}</code>`;
+    if (isEntryStep) {
+      el.currentStepBanner.innerHTML =
+        `<span class="kw">调用入口</span>　<code>${escapeHtml(el.entryInput.value.trim())}</code>`;
+    } else {
+      const kindLabel = KIND_LABEL[step.kind] || '';
+      el.currentStepBanner.innerHTML =
+        `第 <b>${step.line}</b> 行　<span class="kw">${kindLabel}</span>　<code>${escapeHtml(step.label)}</code>`;
+    }
 
     renderFrames(step);
     renderConsole(step.outputLen);
@@ -200,6 +285,7 @@
   const KIND_LABEL = {
     decl: '声明',
     expr: '执行',
+    stmt: '执行',
     assign: '赋值',
     if: '条件判断',
     'loop-test': '循环条件',
@@ -209,7 +295,7 @@
     return: '返回',
     break: '跳出循环',
     continue: '继续循环',
-    throw: '抛出异常',
+    throw: '异常',
     catch: '捕获异常',
     switch: 'switch 分支',
   };
@@ -238,11 +324,12 @@
     const changedSet = new Set(step.changed);
     let html = '';
     step.frames.forEach((f) => {
+      const names = f.order.filter((n) => n !== ENTRY_VAR);
       html += `<div class="frame-card"><div class="frame-name">${escapeHtml(f.name)}</div>`;
-      if (f.order.length === 0) {
+      if (names.length === 0) {
         html += `<div class="empty-hint">（无变量）</div>`;
       } else {
-        f.order.forEach((name) => {
+        names.forEach((name) => {
           const val = f.vars[name];
           const key = f.id + ':' + name;
           const changed = changedSet.has(key);
@@ -279,7 +366,10 @@
       const item = document.createElement('div');
       item.className = 'timeline-item';
       item.dataset.index = i;
-      item.innerHTML = `<span class="tl-line">L${s.line}</span><span class="tl-label">${escapeHtml(s.label)}</span>`;
+      const isEntry = s.line > state.userLineCount;
+      const lineLabel = isEntry ? '入口' : ('L' + s.line);
+      const label = isEntry ? ('调用 ' + el.entryInput.value.trim()) : s.label;
+      item.innerHTML = `<span class="tl-line">${lineLabel}</span><span class="tl-label">${escapeHtml(label)}</span>`;
       item.addEventListener('click', () => { stopPlaying(); goToStep(i); });
       frag.appendChild(item);
     });
@@ -319,6 +409,8 @@
     el.progressSlider.value = 0;
     setControlsEnabled(false);
     showError(null);
+    showOutputResult(null);
+    showStatus(null);
     renderFrames(null);
     renderConsole(0);
     renderTimeline();
@@ -339,7 +431,7 @@
 
   function stopPlaying() {
     state.playing = false;
-    if (state.playTimer) { clearInterval(state.playTimer); state.playTimer = null; }
+    if (state.playTimer) { clearTimeout(state.playTimer); state.playTimer = null; }
     el.playBtn.textContent = '▶';
   }
 
@@ -364,7 +456,7 @@
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.target === el.codeInput || e.target.tagName === 'SELECT') return;
+    if (e.target === el.codeInput || e.target === el.entryInput || e.target.tagName === 'SELECT') return;
     if (!state.ctx || !state.ctx.steps.length) return;
     if (e.key === 'ArrowRight') { stopPlaying(); goToStep(state.index + 1); e.preventDefault(); }
     else if (e.key === 'ArrowLeft') { stopPlaying(); goToStep(state.index - 1); e.preventDefault(); }
@@ -373,9 +465,7 @@
 
   // ---------------- init ----------------
   populateExamples();
-  el.codeInput.value = window.CODE_EXAMPLES ? window.CODE_EXAMPLES['累加循环 (for loop)'] : '';
-  el.exampleSelect.value = '累加循环 (for loop)';
-  resizeEditor();
-  renderGutter();
+  const firstName = Object.keys(window.EXAMPLES.javascript)[0];
+  loadExample(firstName);
   resetPlayback();
 })();
