@@ -25,6 +25,7 @@
         <div class="lang-switch" id="langSwitch" role="tablist">
           <button type="button" class="lang-btn active" data-lang="javascript">JavaScript</button>
           <button type="button" class="lang-btn" data-lang="python">Python</button>
+          <button type="button" class="lang-btn" data-lang="java">Java</button>
         </div>
         <select id="exampleSelect" title="加载示例代码">
           <option value="">— 选择示例代码 —</option>
@@ -112,6 +113,7 @@
     <p>
       <strong>JavaScript</strong>：支持变量声明、if/for/while/do-while、函数与递归、数组/对象、解构、模板字符串、try/catch/throw、switch 等；不支持 class、this、async/await。
       <strong>Python</strong>：基于真实的 CPython（通过浏览器内运行的 Pyodide）执行并逐行追踪，支持绝大多数常见语法，包括 class；首次运行 Python 需要联网下载运行环境。
+      <strong>Java</strong>：内置的 Java 语法子集解释器，支持 class/方法/继承、if/for/while/switch/try-catch、数组、List/Map/Set/StringBuilder 等常用集合、int 溢出与截断除法等数值语义；不支持泛型擦除之外的反射、多线程、注解处理、接口默认方法等高级特性。
       所有代码均在你的浏览器本地运行，不会上传到任何服务器。
     </p>
   </footer>
@@ -121,6 +123,15 @@
   </script>
   <script>
 //__INLINE_INTERPRETER__
+  </script>
+  <script>
+//__INLINE_JAVA_PARSER__
+  </script>
+  <script>
+//__INLINE_JAVA_INTERPRETER__
+  </script>
+  <script>
+//__INLINE_JAVA_RUNNER__
   </script>
   <script>
 //__INLINE_PY_TRACER__

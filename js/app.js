@@ -56,9 +56,12 @@
     if (!btn || btn.classList.contains('active')) return;
     Array.from(el.langSwitch.children).forEach((b) => b.classList.toggle('active', b === btn));
     state.language = btn.dataset.lang;
-    el.entryInput.placeholder = state.language === 'python'
-      ? '例如：Solution().subsets([1, 2, 3])'
-      : '例如：twoSum([2, 7, 11, 15], 9)';
+    const placeholders = {
+      javascript: '例如：twoSum([2, 7, 11, 15], 9)',
+      python: '例如：Solution().subsets([1, 2, 3])',
+      java: '例如：new Solution().subsets(new int[]{1, 2, 3})',
+    };
+    el.entryInput.placeholder = placeholders[state.language] || '';
     populateExamples();
     const names = Object.keys(window.EXAMPLES[state.language] || {});
     if (names.length) loadExample(names[0]);
@@ -275,6 +278,9 @@
   async function runOnce(code, entry) {
     if (state.language === 'python') {
       return await window.PyRunner.runPythonCode(code, entry, showStatus);
+    }
+    if (state.language === 'java') {
+      return window.JavaRunner.runJavaCode(code, entry);
     }
     const fullCode = code + (entry ? `\nvar ${ENTRY_VAR} = (${entry});\n` : '');
     return window.CodeViz.runCode(fullCode);

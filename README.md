@@ -1,10 +1,10 @@
 # 代码执行演变可视化 (Code Line Evolution Visualizer)
 
-粘贴一段 JavaScript 或 Python 代码，逐步查看它运行时**每一行**、**每个变量**是如何变化的 —— 帮助你理解代码的实际执行过程。支持 LeetCode 风格的「调用入口」：写一个表达式（如 `Solution().subsets([1,2,3])`）来调用你的函数/类并直接看到返回结果。
+粘贴一段 JavaScript、Python 或 Java 代码，逐步查看它运行时**每一行**、**每个变量**是如何变化的 —— 帮助你理解代码的实际执行过程。支持 LeetCode 风格的「调用入口」：写一个表达式（如 `Solution().subsets([1,2,3])`）来调用你的函数/类并直接看到返回结果，还可以像 LeetCode 一样管理多个测试用例。
 
 ## 使用方法
 
-`index.html` 是一个**完全自包含**的单文件页面（CSS、JS 解释器、Python 追踪器全部内联），直接用浏览器打开即可使用，不依赖任何同级文件——即使把这一个文件单独拷走也能正常运行。JavaScript 模式完全离线可用；Python 模式首次运行需要联网，从 CDN 下载浏览器内 Python 运行环境（[Pyodide](https://pyodide.org/)，几 MB，只需下载一次）。
+`index.html` 是一个**完全自包含**的单文件页面（CSS、三套解释器全部内联），直接用浏览器打开即可使用，不依赖任何同级文件——即使把这一个文件单独拷走也能正常运行。JavaScript 和 Java 模式完全离线可用；Python 模式首次运行需要联网，从 CDN 下载浏览器内 Python 运行环境（[Pyodide](https://pyodide.org/)，几 MB，只需下载一次）。
 
 也可以用任意静态文件服务器打开：
 
@@ -15,7 +15,7 @@ python3 -m http.server 8080
 
 ## 功能
 
-- **双语言支持**：JavaScript（内置小型解释器）和 Python（基于浏览器内真实 CPython 执行 + 逐行追踪，几乎支持所有常见语法，包括 `class`）
+- **三语言支持**：JavaScript（内置小型解释器）、Python（基于浏览器内真实 CPython 执行 + 逐行追踪，几乎支持所有常见语法，包括 `class`）、Java（内置的 Java 语法子集解释器，支持 class/继承/常用集合）
 - **多测试用例（LeetCode 风格）**：像 LeetCode 一样管理多个「用例」标签页，每个用例填一个调用表达式（如 `Solution().subsets([1,2,3])`）；点「运行」会一次性跑完所有用例，在「测试结果」里看到每个用例的输出，点某一行还能跳过去单步调试那个用例
 - 粘贴或选择示例代码，点击「运行并可视化」
 - 单步前进/后退、播放/暂停（可调速度）、进度条拖拽跳转
@@ -37,6 +37,14 @@ python3 -m http.server 8080
 装饰器、推导式、`try/except/finally`、上下文管理器等。不支持：`async`/`await`、多线程/多进程、访问本机文件系统或网络
 （Pyodide 沙箱本身的限制）。
 
+**Java**：内置的 Java 语法子集解释器（自己写的树遍历解释器，不是真的 JVM），支持 `class`（含继承、静态成员、嵌套类）、
+`if/for/while/do-while/switch/try-catch-finally/throw`、数组（含多维）、常用集合
+（`ArrayList`/`LinkedList`/`HashMap`/`TreeMap`/`HashSet`/`TreeSet`/`Stack`/`PriorityQueue`/`StringBuilder`）、
+`Math`/`Integer`/`Character`/`Arrays`/`Collections` 等常用静态方法、`int` 溢出与截断除法等数值语义、基础 lambda
+表达式（用于 `sort`/`forEach` 的比较器）、内置 `ListNode`/`TreeNode`（未在代码里定义时自动提供，和 LeetCode 一致）。
+不支持：泛型的编译期检查（运行期按原始类型处理）、接口/抽象类、反射、多线程、注解处理、方法引用 `::`、
+`switch` 表达式（新语法）、`record`/`sealed` 等较新特性。
+
 ## 工作原理
 
 - **JavaScript**：使用内置的 [Acorn](https://github.com/acornjs/acorn) 解析器解析代码，再用 `js/interpreter.js` 中实现的
@@ -44,7 +52,11 @@ python3 -m http.server 8080
 - **Python**：通过 [Pyodide](https://pyodide.org/)（编译到 WebAssembly 的 CPython）在浏览器里真实运行你的代码，
   用 `sys.settrace` 在每一行/每次函数调用与返回时记录同样格式的「步骤快照」（追踪器源码见 `python/tracer.py`，
   `build.js` 会把它作为字符串注入页面，运行时喂给 Pyodide 执行）。
-- 两种语言产出完全相同结构的步骤数据，因此界面渲染逻辑（`js/app.js`）是共用的。
+- **Java**：用 [java-parser](https://github.com/jhipster/prettier-java/tree/main/packages/java-parser)（`vendor/java-parser.js`，
+  基于 Chevrotain 的完整 Java 语法解析器）把代码解析成语法树，再用 `js/java_interpreter.js` 中实现的树遍历解释器
+  逐语句执行，记录同样格式的「步骤快照」；数值运算实现了 Java 的整型截断除法、`int` 32 位溢出等语义，并在
+  开发过程中用真实的 `javac`/`java` 交叉验证过（递归、回溯、集合、异常、整数溢出等场景的输出逐字节比对一致）。
+- 三种语言产出完全相同结构的步骤数据，因此界面渲染逻辑（`js/app.js`）是共用的。
 - 所有解析与执行都在你的浏览器本地完成（Python 首次使用除外，需要联网下载运行环境本身），代码不会上传到任何服务器。
 
 ## 目录结构
@@ -55,13 +67,16 @@ python3 -m http.server 8080
 index.template.html   页面骨架模板（含内联占位符）
 build.js              构建脚本：node build.js 会重新生成 index.html
 index.html            生成产物：完全自包含的单文件页面（直接使用这个文件）
-css/style.css         样式（支持浅色/深色主题、移动端适配）
-js/interpreter.js     JavaScript 解释器：解析并生成逐行执行的步骤快照
-python/tracer.py      Python 追踪器源码 —— 是一个普通的 .py 文件，可以直接用 python3 检查/测试
-js/py_runner.js       负责懒加载 Pyodide、把 python/tracer.py 的内容喂给它执行、桥接页面
-js/examples.js        内置示例代码（JS 和 Python 各一套）
-js/app.js             界面逻辑：编辑器、语言切换、多测试用例、播放控制、变量/时间线/控制台渲染
-vendor/acorn.js        第三方 JS 解析器 Acorn（本地内置，无需联网）
+css/style.css          样式（支持浅色/深色主题、移动端适配）
+js/interpreter.js      JavaScript 解释器：解析并生成逐行执行的步骤快照
+python/tracer.py       Python 追踪器源码 —— 是一个普通的 .py 文件，可以直接用 python3 检查/测试
+js/py_runner.js        负责懒加载 Pyodide、把 python/tracer.py 的内容喂给它执行、桥接页面
+js/java_interpreter.js Java 解释器：解析并生成逐行执行的步骤快照
+js/java_runner.js      桥接 Java 解释器与页面（错误信息本地化等）
+js/examples.js         内置示例代码（三种语言各一套）
+js/app.js              界面逻辑：编辑器、语言切换、多测试用例、播放控制、变量/时间线/控制台渲染
+vendor/acorn.js         第三方 JS 解析器 Acorn（本地内置，无需联网）
+vendor/java-parser.js   第三方 Java 解析器 java-parser（本地内置，无需联网）
 ```
 
 若修改了 `css/`、`js/`、`python/tracer.py` 或 `index.template.html`，运行 `node build.js` 重新生成 `index.html`。

@@ -132,4 +132,94 @@ print('result =', result)
       entry: '',
     },
   },
+
+  java: {
+    '累加循环 (for loop)': {
+      code: `class Solution {
+    public static void main(String[] args) {
+        int sum = 0;
+        for (int i = 1; i <= 5; i++) {
+            sum += i;
+        }
+        System.out.println("sum = " + sum);
+    }
+}
+`,
+      entry: '',
+    },
+    '斐波那契递归 (recursion)': {
+      code: `class Solution {
+    public int fib(int n) {
+        if (n <= 1) return n;
+        return fib(n - 1) + fib(n - 2);
+    }
+}
+`,
+      entry: 'new Solution().fib(6)',
+    },
+    '冒泡排序 (bubble sort)': {
+      code: `class Solution {
+    public int[] bubbleSort(int[] arr) {
+        for (int i = 0; i < arr.length - 1; i++) {
+            for (int j = 0; j < arr.length - 1 - i; j++) {
+                if (arr[j] > arr[j + 1]) {
+                    int tmp = arr[j];
+                    arr[j] = arr[j + 1];
+                    arr[j + 1] = tmp;
+                }
+            }
+        }
+        return arr;
+    }
+}
+`,
+      entry: 'new Solution().bubbleSort(new int[]{5, 3, 8, 1, 2})',
+    },
+    'LeetCode 风格：子集 (backtracking)': {
+      code: `import java.util.*;
+
+class Solution {
+    public List<List<Integer>> subsets(int[] nums) {
+        List<List<Integer>> ans = new ArrayList<>();
+        List<Integer> path = new ArrayList<>();
+        backtrack(nums, 0, path, ans);
+        return ans;
+    }
+
+    private void backtrack(int[] nums, int start, List<Integer> path, List<List<Integer>> ans) {
+        ans.add(new ArrayList<>(path));
+        for (int i = start; i < nums.length; i++) {
+            path.add(nums[i]);
+            backtrack(nums, i + 1, path, ans);
+            path.remove(path.size() - 1);
+        }
+    }
+}
+`,
+      entry: 'new Solution().subsets(new int[]{1, 2, 3})',
+    },
+    '异常处理 (try/catch)': {
+      code: `class Solution {
+    static double divide(int a, int b) {
+        if (b == 0) {
+            throw new ArithmeticException("除数不能为 0");
+        }
+        return (double) a / b;
+    }
+
+    public static void main(String[] args) {
+        double result;
+        try {
+            result = divide(10, 0);
+        } catch (ArithmeticException e) {
+            System.out.println("出错了: " + e.getMessage());
+            result = -1;
+        }
+        System.out.println("result = " + result);
+    }
+}
+`,
+      entry: '',
+    },
+  },
 };
