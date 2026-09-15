@@ -16,6 +16,7 @@
     lineHighlight: document.getElementById('lineHighlight'),
     codeInput: document.getElementById('codeInput'),
     entryInput: document.getElementById('entryInput'),
+    methodSelect: document.getElementById('methodSelect'),
     tcTabs: document.getElementById('tcTabs'),
     statusBox: document.getElementById('statusBox'),
     errorBox: document.getElementById('errorBox'),
@@ -46,8 +47,9 @@
     playTimer: null,
     userLineCount: 0,
     running: false,
-    cases: [{ name: '用例 1', entry: '' }],
+    cases: [{ name: '用例 1', method: 'manual', args: '' }],
     activeCase: 0,
+    detected: [],
   };
 
   // ---------------- language switch ----------------
@@ -56,12 +58,6 @@
     if (!btn || btn.classList.contains('active')) return;
     Array.from(el.langSwitch.children).forEach((b) => b.classList.toggle('active', b === btn));
     state.language = btn.dataset.lang;
-    const placeholders = {
-      javascript: '例如：twoSum([2, 7, 11, 15], 9)',
-      python: '例如：Solution().subsets([1, 2, 3])',
-      java: '例如：new Solution().subsets(new int[]{1, 2, 3})',
-    };
-    el.entryInput.placeholder = placeholders[state.language] || '';
     populateExamples();
     const names = Object.keys(window.EXAMPLES[state.language] || {});
     if (names.length) loadExample(names[0]);
@@ -80,14 +76,77 @@
     });
   }
 
+  // ---------------- method auto-detection ----------------
+  // Instead of asking the user to write a full call expression, we scan the
+  // pasted code for callable methods/functions and let them pick one from a
+  // dropdown, typing only the arguments (LeetCode-style). "自定义表达式"
+  // falls back to the old raw-expression behavior when nothing is detected
+  // or matched.
+  function refreshDetection() {
+    state.detected = (window.detectCallables && window.detectCallables(state.language, el.codeInput.value)) || [];
+    el.methodSelect.innerHTML = '';
+    state.detected.forEach((m, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = m.label;
+      el.methodSelect.appendChild(opt);
+    });
+    const manualOpt = document.createElement('option');
+    manualOpt.value = 'manual';
+    manualOpt.textContent = '自定义表达式…';
+    el.methodSelect.appendChild(manualOpt);
+  }
+
+  function methodByValue(val) {
+    if (val === 'manual' || val === undefined || val === null) return null;
+    const idx = Number(val);
+    return state.detected[idx] || null;
+  }
+
+  // Builds the actual call expression to execute from a case's {method, args}:
+  // a detected method wraps the bare args in its call prefix (LeetCode-style,
+  // e.g. "new Solution().subsets(" + "[1, 2, 3]" + ")"); "manual" mode treats
+  // `args` as the full expression already, unchanged.
+  function computeEntryExpr(caseObj) {
+    if (!caseObj) return '';
+    const m = methodByValue(caseObj.method);
+    const args = (caseObj.args || '').trim();
+    if (m) return `${m.prefix}(${args})`;
+    return args;
+  }
+
+  function updateEntryPlaceholder() {
+    const c = state.cases[state.activeCase];
+    const m = methodByValue(c && c.method);
+    el.entryInput.placeholder = m
+      ? (m.params.length ? `参数，例如：${m.params.join(', ')}` : '（无参数，留空即可）')
+      : '完整调用表达式，例如：Solution().subsets([1, 2, 3])';
+  }
+
+  // Matches an example's full call expression (e.g. "new Solution().subsets([1,2,3])")
+  // back to a detected method + its bare arguments, so examples still work
+  // with the args-only UI without having to hand-maintain both forms.
+  function matchEntryToMethod(entry, detected) {
+    if (!entry) return { method: 'manual', args: '' };
+    for (let i = 0; i < detected.length; i++) {
+      const p = detected[i].prefix;
+      if (entry.startsWith(p + '(') && entry.endsWith(')')) {
+        return { method: String(i), args: entry.slice(p.length + 1, -1) };
+      }
+    }
+    return { method: 'manual', args: entry };
+  }
+
   function loadExample(name) {
     const ex = (window.EXAMPLES[state.language] || {})[name];
     if (!ex) return;
     el.codeInput.value = ex.code;
-    state.cases = [{ name: '用例 1', entry: ex.entry || '' }];
+    refreshDetection();
+    const matched = matchEntryToMethod(ex.entry || '', state.detected);
+    state.cases = [{ name: '用例 1', method: matched.method, args: matched.args }];
     state.activeCase = 0;
-    el.entryInput.value = ex.entry || '';
     el.exampleSelect.value = name;
+    applyActiveCaseToUI();
     renderTabs();
     hideResults();
     resizeEditor();
@@ -128,13 +187,26 @@
   }
 
   function syncActiveEntry() {
-    if (state.cases[state.activeCase]) state.cases[state.activeCase].entry = el.entryInput.value;
+    const c = state.cases[state.activeCase];
+    if (!c) return;
+    c.method = el.methodSelect.value;
+    c.args = el.entryInput.value;
+  }
+
+  function applyActiveCaseToUI() {
+    const c = state.cases[state.activeCase];
+    if (!c) return;
+    const hasOption = Array.from(el.methodSelect.options).some((o) => o.value === c.method);
+    el.methodSelect.value = hasOption ? c.method : 'manual';
+    if (!hasOption) c.method = 'manual';
+    el.entryInput.value = c.args || '';
+    updateEntryPlaceholder();
   }
 
   function switchCase(i) {
     syncActiveEntry();
     state.activeCase = i;
-    el.entryInput.value = state.cases[i].entry || '';
+    applyActiveCaseToUI();
     renderTabs();
     showOutputResult(null);
     if (el.resultsBlock && !el.resultsBlock.hidden) {
@@ -144,9 +216,10 @@
 
   function addCase() {
     syncActiveEntry();
-    state.cases.push({ name: '用例 ' + (state.cases.length + 1), entry: state.cases[state.activeCase].entry || '' });
+    const cur = state.cases[state.activeCase];
+    state.cases.push({ name: '用例 ' + (state.cases.length + 1), method: cur.method, args: cur.args });
     state.activeCase = state.cases.length - 1;
-    el.entryInput.value = state.cases[state.activeCase].entry || '';
+    applyActiveCaseToUI();
     renderTabs();
   }
 
@@ -156,9 +229,14 @@
     state.cases.forEach((c, idx) => { c.name = '用例 ' + (idx + 1); });
     if (state.activeCase >= state.cases.length) state.activeCase = state.cases.length - 1;
     else if (state.activeCase > i) state.activeCase--;
-    el.entryInput.value = state.cases[state.activeCase].entry || '';
+    applyActiveCaseToUI();
     renderTabs();
   }
+
+  el.methodSelect.addEventListener('change', () => {
+    syncActiveEntry();
+    updateEntryPlaceholder();
+  });
 
   // ---------------- editor (textarea + gutter) ----------------
   function currentLineCount() {
@@ -188,6 +266,8 @@
   el.codeInput.addEventListener('input', () => {
     resizeEditor();
     renderGutter();
+    refreshDetection();
+    applyActiveCaseToUI();
     onCodeChanged();
   });
   el.codeInput.addEventListener('keydown', (e) => {
@@ -213,9 +293,10 @@
 
   el.clearBtn.addEventListener('click', () => {
     el.codeInput.value = '';
-    state.cases = [{ name: '用例 1', entry: '' }];
+    refreshDetection();
+    state.cases = [{ name: '用例 1', method: 'manual', args: '' }];
     state.activeCase = 0;
-    el.entryInput.value = '';
+    applyActiveCaseToUI();
     el.exampleSelect.value = '';
     renderTabs();
     hideResults();
@@ -299,7 +380,7 @@
     showOutputResult(null);
     state.userLineCount = code.split('\n').length;
 
-    const activeEntry = (state.cases[state.activeCase].entry || '').trim();
+    const activeEntry = computeEntryExpr(state.cases[state.activeCase]);
     let ctx;
     try {
       if (state.language === 'python') showStatus('准备运行…');
@@ -344,7 +425,7 @@
       const results = [];
       for (let i = 0; i < state.cases.length; i++) {
         const c = state.cases[i];
-        const entry = (c.entry || '').trim();
+        const entry = computeEntryExpr(c);
         if (!entry) { results.push({ skip: true }); continue; }
         let caseCtx;
         if (i === state.activeCase) caseCtx = ctx;
@@ -374,7 +455,7 @@
       const frames = ctx.steps[i].frames;
       for (const f of frames) {
         if (Object.prototype.hasOwnProperty.call(f.vars, ENTRY_VAR)) {
-          return f.vars[ENTRY_VAR];
+          return f.vars[ENTRY_VAR].text;
         }
       }
     }
@@ -404,8 +485,9 @@
     }
 
     if (isEntryStep) {
+      const fullExpr = computeEntryExpr(state.cases[state.activeCase]);
       el.currentStepBanner.innerHTML =
-        `<span class="kw">调用入口</span>　<code>${escapeHtml(el.entryInput.value.trim())}</code>`;
+        `<span class="kw">调用入口</span>　<code>${escapeHtml(fullExpr)}</code>`;
     } else {
       const kindLabel = KIND_LABEL[step.kind] || '';
       el.currentStepBanner.innerHTML =
@@ -453,6 +535,104 @@
     }
   }
 
+  // ---------------- shape-based variable visualization ----------------
+  // Renders the structured {kind, ...} descriptors the interpreters attach to
+  // every variable: primitives as plain text, arrays as boxed cells, linked
+  // lists as chained boxes with arrows, binary trees as an actual tree
+  // diagram, maps/sets as chips, and generic objects as field cards.
+  function renderShape(shape, depth) {
+    depth = depth || 0;
+    if (!shape) return '<span class="shape-null">null</span>';
+    switch (shape.kind) {
+      case 'null': return `<span class="shape-null">${escapeHtml(shape.text)}</span>`;
+      case 'array': return renderArrayShape(shape, depth);
+      case 'list': return renderListShape(shape);
+      case 'tree': return renderTreeShape(shape);
+      case 'map': return renderMapShape(shape, depth);
+      case 'set': return renderSetShape(shape, depth);
+      case 'object': return renderObjectShape(shape, depth);
+      default: return `<span class="shape-primitive">${escapeHtml(shape.text || '')}</span>`;
+    }
+  }
+
+  function renderArrayShape(shape, depth) {
+    if (depth > 3) return `<span class="shape-primitive">${escapeHtml(shape.text)}</span>`;
+    if (!shape.items.length) return `<span class="shape-primitive">[]</span>`;
+    const cells = shape.items.map((it, i) => {
+      const nested = it && it.kind === 'array';
+      return `<div class="arr-cell ${nested ? 'nested' : ''}">
+          <div class="arr-val">${renderShape(it, depth + 1)}</div>
+          <div class="arr-idx">${i}</div>
+        </div>`;
+    }).join('');
+    return `<div class="shape-array">${cells}${shape.truncated ? '<div class="arr-more">…</div>' : ''}</div>`;
+  }
+
+  function renderListShape(shape) {
+    if (!shape.nodes.length) return `<span class="shape-primitive">null</span>`;
+    const boxes = shape.nodes.map((n, i) => {
+      const fieldsHtml = (n.order || Object.keys(n.fields)).map((k) =>
+        `<div class="list-field"><span class="lf-name">${escapeHtml(k)}</span><span class="lf-val">${renderShape(n.fields[k], 1)}</span></div>`
+      ).join('');
+      const showArrow = i < shape.nodes.length - 1 || shape.cyclicTo !== null;
+      return `<div class="list-node-wrap">
+          <div class="list-node">${fieldsHtml}</div>
+          ${showArrow ? '<div class="list-arrow">→</div>' : ''}
+        </div>`;
+    }).join('');
+    let tail;
+    if (shape.cyclicTo !== null) {
+      const targetIdx = shape.nodes.findIndex((n) => n.id === shape.cyclicTo);
+      tail = `<div class="list-cycle" title="回到第 ${targetIdx + 1} 个节点">⟲ 循环</div>`;
+    } else {
+      tail = `<div class="list-null">null</div>`;
+    }
+    return `<div class="shape-list">${boxes}${tail}</div>`;
+  }
+
+  function renderTreeNode(node) {
+    if (!node) return `<div class="tree-slot"><div class="tree-box empty">∅</div></div>`;
+    const order = node.order || Object.keys(node.fields);
+    const label = order.length
+      ? order.map((k) => renderShape(node.fields[k], 1)).join(', ')
+      : '·';
+    const hasChildren = !!(node.left || node.right);
+    return `<div class="tree-slot">
+        <div class="tree-box">${label}</div>
+        ${hasChildren ? `<div class="tree-children">
+            <div class="tree-child">${renderTreeNode(node.left)}</div>
+            <div class="tree-child">${renderTreeNode(node.right)}</div>
+          </div>` : ''}
+      </div>`;
+  }
+  function renderTreeShape(shape) {
+    if (!shape.root) return `<span class="shape-primitive">null</span>`;
+    return `<div class="shape-tree">${renderTreeNode(shape.root)}</div>`;
+  }
+
+  function renderMapShape(shape, depth) {
+    if (!shape.entries.length) return `<span class="shape-primitive">{}</span>`;
+    const rows = shape.entries.map((e) =>
+      `<div class="map-row"><span class="map-k">${renderShape(e.k, depth + 1)}</span><span class="map-arrow">→</span><span class="map-v">${renderShape(e.v, depth + 1)}</span></div>`
+    ).join('');
+    return `<div class="shape-map">${rows}</div>`;
+  }
+
+  function renderSetShape(shape, depth) {
+    if (!shape.items.length) return `<span class="shape-primitive">{}</span>`;
+    return `<div class="shape-set">${shape.items.map((x) => `<span class="set-chip">${renderShape(x, depth + 1)}</span>`).join('')}</div>`;
+  }
+
+  function renderObjectShape(shape, depth) {
+    if (depth > 2) return `<span class="shape-primitive">${escapeHtml(shape.text)}</span>`;
+    const order = shape.order || Object.keys(shape.fields);
+    if (!order.length) return `<span class="shape-primitive">${escapeHtml(shape.text)}</span>`;
+    const rows = order.map((k) =>
+      `<div class="obj-row"><span class="obj-k">${escapeHtml(k)}</span><span class="obj-v">${renderShape(shape.fields[k], depth + 1)}</span></div>`
+    ).join('');
+    return `<div class="shape-object">${shape.className ? `<div class="obj-cls">${escapeHtml(shape.className)}</div>` : ''}${rows}</div>`;
+  }
+
   function renderFrames(step) {
     if (!step) {
       el.framesView.innerHTML = '<p class="empty-hint">尚未运行</p>';
@@ -467,12 +647,16 @@
         html += `<div class="empty-hint">（无变量）</div>`;
       } else {
         names.forEach((name) => {
-          const val = f.vars[name];
+          const shape = f.vars[name];
           const key = f.id + ':' + name;
           const changed = changedSet.has(key);
-          html += `<div class="var-row ${changed ? 'changed' : ''}">
-              <span class="vname">${escapeHtml(name)}</span>
-              <span class="vval">${escapeHtml(val)}</span>
+          const isComplex = shape.kind !== 'primitive' && shape.kind !== 'null';
+          html += `<div class="var-block ${changed ? 'changed' : ''}">
+              <div class="var-name-row">
+                <span class="vname">${escapeHtml(name)}</span>
+                ${isComplex ? '' : `<span class="vval">${escapeHtml(shape.text)}</span>`}
+              </div>
+              ${isComplex ? `<div class="var-visual">${renderShape(shape)}</div>` : ''}
             </div>`;
         });
       }

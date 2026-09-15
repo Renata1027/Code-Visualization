@@ -112,6 +112,80 @@
 
   function srcOf(node, ctx) { return ctx.code.slice(node.start, node.end); }
 
+  // ---------- structured shape descriptors (for visual rendering) ----------
+  // Every variable's value is described as a small JSON tree so the UI can
+  // draw arrays as boxes, linked lists as chained boxes with arrows, and
+  // binary trees as an actual tree diagram, instead of just a text dump.
+  let shapeIdCounter = 0;
+  function isPlainObj(v) {
+    return v !== null && typeof v === 'object' && !Array.isArray(v)
+      && !(v instanceof Map) && !(v instanceof Set) && !(v instanceof Date) && !(v instanceof Error) && !(v instanceof RegExp);
+  }
+  function shapeOf(v, depth, seen) {
+    depth = depth || 0;
+    seen = seen || new Set();
+    if (v === null || v === undefined) return { kind: 'null', text: v === null ? 'null' : 'undefined' };
+    const t = typeof v;
+    if (t !== 'object' && t !== 'function') return { kind: 'primitive', text: fmt(v) };
+    if (t === 'function') return { kind: 'primitive', text: fmt(v) };
+    if (seen.has(v)) return { kind: 'primitive', text: '(circular)' };
+    if (depth > 6) return { kind: 'primitive', text: fmt(v, depth) };
+    if (Array.isArray(v)) {
+      seen.add(v);
+      const items = v.slice(0, 60).map((x) => shapeOf(x, depth + 1, seen));
+      return { kind: 'array', items, truncated: v.length > 60, text: fmt(v) };
+    }
+    if (v instanceof Map) {
+      seen.add(v);
+      const entries = Array.from(v.entries()).slice(0, 30).map(([k, val]) => ({ k: shapeOf(k, depth + 1, seen), v: shapeOf(val, depth + 1, seen) }));
+      return { kind: 'map', entries, text: fmt(v) };
+    }
+    if (v instanceof Set) {
+      seen.add(v);
+      const items = Array.from(v.values()).slice(0, 30).map((x) => shapeOf(x, depth + 1, seen));
+      return { kind: 'set', items, text: fmt(v) };
+    }
+    if (v instanceof Date || v instanceof Error || v instanceof RegExp) return { kind: 'primitive', text: fmt(v) };
+    if (isPlainObj(v)) {
+      const keys = Object.keys(v);
+      if (keys.includes('next') && !keys.includes('left') && !keys.includes('right')) {
+        const nodes = [];
+        const ids = new Map();
+        let cur = v;
+        let cyclicTo = null;
+        while (cur !== null && cur !== undefined && nodes.length < 80) {
+          if (ids.has(cur)) { cyclicTo = ids.get(cur); break; }
+          const id = ++shapeIdCounter;
+          ids.set(cur, id);
+          const fields = {};
+          for (const k of Object.keys(cur)) if (k !== 'next') fields[k] = shapeOf(cur[k], depth + 1, new Set());
+          nodes.push({ id, fields });
+          cur = cur.next;
+        }
+        return { kind: 'list', nodes, cyclicTo, text: fmt(v) };
+      }
+      if (keys.includes('left') && keys.includes('right')) {
+        seen.add(v);
+        function buildTree(node, d, localSeen) {
+          if (node === null || node === undefined) return null;
+          const id = ++shapeIdCounter;
+          if (d > 9 || localSeen.has(node)) return { id, fields: {}, left: null, right: null, truncated: true };
+          localSeen.add(node);
+          const fields = {};
+          for (const k of Object.keys(node)) if (k !== 'left' && k !== 'right') fields[k] = shapeOf(node[k], d + 1, new Set());
+          return { id, fields, left: buildTree(node.left, d + 1, localSeen), right: buildTree(node.right, d + 1, localSeen) };
+        }
+        return { kind: 'tree', root: buildTree(v, 0, new Set()), text: fmt(v) };
+      }
+      seen.add(v);
+      const fields = {};
+      const order = [];
+      for (const k of keys.slice(0, 30)) { fields[k] = shapeOf(v[k], depth + 1, seen); order.push(k); }
+      return { kind: 'object', className: v.constructor && v.constructor.name !== 'Object' ? v.constructor.name : null, fields, order, text: fmt(v) };
+    }
+    return { kind: 'primitive', text: fmt(v) };
+  }
+
   // ---------- frame collection for a step snapshot ----------
   function collectFrames(scope) {
     const frames = [];
@@ -124,7 +198,7 @@
       }
       for (const [k, entry] of s.vars) {
         if (entry.kind === 'builtin') continue;
-        if (!(k in curVars)) { curVars[k] = fmt(entry.value); curOrder.push(k); }
+        if (!(k in curVars)) { curVars[k] = shapeOf(entry.value); curOrder.push(k); }
       }
       s = s.parent;
     }
@@ -137,7 +211,7 @@
     if (ctx.steps.length % 200 === 0 && Date.now() - ctx.startTime > 6000) throw new TimeLimitError();
     const frames = collectFrames(scope);
     const flat = {};
-    frames.forEach(f => f.order.forEach(k => { flat[f.id + ':' + k] = f.vars[k]; }));
+    frames.forEach(f => f.order.forEach(k => { flat[f.id + ':' + k] = f.vars[k].text; }));
     const changed = [];
     for (const key in flat) if (ctx.lastFlat[key] !== flat[key]) changed.push(key);
     for (const key in ctx.lastFlat) if (!(key in flat)) { /* var went out of scope */ }
@@ -203,7 +277,7 @@
         if (node.name === 'undefined') return undefined;
         return scope.get(node.name);
       case 'ThisExpression':
-        return undefined;
+        return scope.has('this') ? scope.get('this') : undefined;
       case 'ArrayExpression': {
         const arr = [];
         for (const el of node.elements) {
@@ -430,18 +504,22 @@
       exprBody: node.body.type !== 'BlockStatement',
       node,
     };
-    const fn = function (...args) { return invokeMeta(meta, args, ctx); };
+    const fn = function (...args) { return invokeMeta(meta, args, ctx, this); };
     fn.__interpMeta = meta;
     try { Object.defineProperty(fn, 'name', { value: meta.name || 'anonymous' }); } catch (e) {}
     return fn;
   }
 
-  function invokeMeta(meta, args, ctx) {
+  function invokeMeta(meta, args, ctx, thisVal) {
     ctx.callDepth = (ctx.callDepth || 0) + 1;
     if (ctx.callDepth > 400) { ctx.callDepth--; throw new InterpError('调用栈过深，可能存在无限递归 (max depth 400)'); }
     try {
       const frame = new Frame(meta.name || (meta.isArrow ? '(匿名箭头函数)' : '(匿名函数)'));
       const fnScope = new Scope(meta.closureScope, frame);
+      // Arrow functions have no `this` of their own: leave it unbound here so
+      // lookups fall through the closure chain to the enclosing this (or
+      // undefined at top level), matching real JS lexical-this semantics.
+      if (!meta.isArrow && thisVal !== undefined) fnScope.declare('this', thisVal, 'builtin');
       bindParams(meta.params, args, fnScope, ctx);
       let result;
       if (meta.exprBody) {

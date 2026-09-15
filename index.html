@@ -105,17 +105,12 @@ body {
 .app-main {
   max-width: 1400px;
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
-  gap: 16px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-@media (max-width: 900px) {
-  .app-main { grid-template-columns: 1fr; }
-}
-
-.editor-panel, .side-panel {
+.card {
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -123,13 +118,42 @@ body {
   padding: 16px;
 }
 
-.side-panel {
+/* code editor (left) + variable visualization (right), side by side and at
+   the same height so stepping through code and seeing its effect never
+   requires looking somewhere else on the page. Playback controls sit in
+   their own full-width bar directly below both. */
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 980px) {
+  .workspace { grid-template-columns: 1fr; }
+}
+
+.visual-pane {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  max-height: calc(100vh - 140px);
+  gap: 10px;
   min-height: 300px;
-  overflow: hidden;
+}
+.visual-pane-title {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  font-weight: 700;
+  margin: 0;
+}
+
+.secondary-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+@media (max-width: 700px) {
+  .secondary-row { grid-template-columns: 1fr; }
 }
 
 .toolbar {
@@ -137,7 +161,6 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
-  margin-bottom: 12px;
 }
 
 /* language segmented control */
@@ -408,9 +431,15 @@ select { max-width: 220px; }
   white-space: nowrap;
 }
 .entry-hint { font-size: 0.78rem; opacity: 0.8; }
+.method-select {
+  flex: 0 0 auto;
+  max-width: 260px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+}
 .entry-input {
   flex: 1;
-  min-width: 220px;
+  min-width: 160px;
   font: inherit;
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
@@ -473,8 +502,10 @@ select { max-width: 220px; }
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
   flex-wrap: wrap;
+  position: sticky;
+  bottom: 8px;
+  z-index: 5;
 }
 .progress-slider { flex: 1; min-width: 120px; accent-color: var(--accent); }
 .step-counter {
@@ -494,7 +525,6 @@ select { max-width: 220px; }
 .speed-label input { width: 80px; accent-color: var(--accent); }
 
 .current-step-banner {
-  margin-top: 12px;
   padding: 10px 12px;
   border-radius: 8px;
   background: var(--accent-dim);
@@ -510,11 +540,12 @@ select { max-width: 220px; }
   font-family: ui-monospace, monospace;
 }
 
-/* ---- side panel ---- */
+/* ---- secondary panels (timeline / console) ---- */
 .panel-block {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 260px;
 }
 .panel-block h2 {
   font-size: 0.8rem;
@@ -523,9 +554,8 @@ select { max-width: 220px; }
   color: var(--text-dim);
   margin: 0 0 8px;
   font-weight: 700;
+  flex: 0 0 auto;
 }
-.frames-block { flex: 0 0 auto; }
-.timeline-block, .console-block { flex: 1 1 0; min-height: 90px; }
 .frames-view, .timeline-view, .console-view {
   overflow: auto;
   border: 1px solid var(--border);
@@ -534,9 +564,9 @@ select { max-width: 220px; }
   font-size: 0.85rem;
   background: var(--bg);
 }
-.frames-view { max-height: 260px; min-height: 60px; flex: 0 0 auto; }
-.timeline-view { flex: 1 1 auto; min-height: 60px; }
-.console-view { flex: 1 1 auto; min-height: 50px; font-family: ui-monospace, monospace; }
+.frames-view { max-height: min(60vh, 560px); min-height: 260px; flex: 1 1 auto; }
+.timeline-view { flex: 1 1 auto; min-height: 0; }
+.console-view { flex: 1 1 auto; min-height: 0; font-family: ui-monospace, monospace; }
 
 .frames-view, .timeline-view, .console-view { scrollbar-width: thin; }
 .frames-view::-webkit-scrollbar, .timeline-view::-webkit-scrollbar, .console-view::-webkit-scrollbar {
@@ -584,6 +614,161 @@ select { max-width: 220px; }
 }
 .var-row.changed .vval { color: var(--changed); font-weight: 700; }
 
+/* ---- variable blocks (primitive + visual) ---- */
+.var-block {
+  padding: 6px 4px;
+  border-radius: 8px;
+  transition: background .5s;
+  margin-bottom: 2px;
+}
+.var-block.changed { background: var(--changed-bg); }
+.var-name-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+.var-name-row .vname { color: var(--text-dim); font-weight: 600; }
+.var-name-row .vval { text-align: right; overflow-wrap: anywhere; word-break: break-word; }
+.var-block.changed .var-name-row .vval { color: var(--changed); font-weight: 700; }
+.var-visual {
+  margin-top: 6px;
+  padding: 8px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+.var-block.changed .var-visual { border-color: var(--changed); }
+
+.shape-primitive { font-family: ui-monospace, monospace; font-size: 0.85rem; }
+.shape-null { font-family: ui-monospace, monospace; font-size: 0.85rem; color: var(--text-dim); font-style: italic; }
+
+/* ---- array: boxed cells with index labels ---- */
+.shape-array { display: flex; flex-wrap: wrap; gap: 2px; align-items: flex-end; }
+.arr-cell { display: flex; flex-direction: column; align-items: center; }
+.arr-val {
+  min-width: 34px;
+  min-height: 30px;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px 6px 0 0;
+  background: var(--panel-bg);
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+.arr-cell.nested .arr-val { padding: 4px; border-color: var(--border); }
+.arr-idx {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+  padding: 1px 6px;
+  background: var(--accent-dim);
+  border-radius: 0 0 5px 5px;
+  min-width: 20px;
+  text-align: center;
+}
+.arr-more { align-self: center; color: var(--text-dim); padding: 0 6px; }
+
+/* ---- linked list: chained boxes with arrows ---- */
+.shape-list { display: flex; flex-wrap: wrap; align-items: center; gap: 0; }
+.list-node-wrap { display: flex; align-items: center; }
+.list-node {
+  border: 1.5px solid var(--accent);
+  border-radius: 8px;
+  padding: 5px 9px;
+  background: var(--panel-bg);
+  min-width: 40px;
+}
+.list-field { display: flex; gap: 5px; font-family: ui-monospace, monospace; font-size: 0.78rem; white-space: nowrap; }
+.list-field .lf-name { color: var(--text-dim); }
+.list-arrow { padding: 0 6px; color: var(--accent); font-weight: 700; }
+.list-null, .list-cycle {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  padding: 4px 8px;
+  font-style: italic;
+}
+.list-cycle { color: var(--changed); cursor: help; }
+
+/* ---- binary tree diagram ---- */
+.shape-tree { display: flex; justify-content: center; padding: 4px; overflow-x: auto; }
+.tree-slot { display: flex; flex-direction: column; align-items: center; }
+.tree-box {
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-bg);
+  font-family: ui-monospace, monospace;
+  font-size: 0.76rem;
+  flex-shrink: 0;
+  z-index: 1;
+}
+.tree-box.empty { border: 1.5px dashed var(--border); color: var(--text-dim); font-size: 0.7rem; }
+.tree-children { display: flex; position: relative; padding-top: 22px; margin-top: 2px; }
+.tree-child { position: relative; padding: 0 14px; display: flex; flex-direction: column; align-items: center; }
+.tree-child::before {
+  content: '';
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  width: 0;
+  height: 22px;
+  border-left: 1.5px solid var(--border);
+}
+.tree-child:first-child::after {
+  content: '';
+  position: absolute;
+  top: -22px;
+  left: 50%;
+  right: 0;
+  height: 0;
+  border-top: 1.5px solid var(--border);
+}
+.tree-child:last-child::after {
+  content: '';
+  position: absolute;
+  top: -22px;
+  left: 0;
+  right: 50%;
+  height: 0;
+  border-top: 1.5px solid var(--border);
+}
+
+/* ---- map / set / generic object ---- */
+.shape-map { display: flex; flex-direction: column; gap: 3px; }
+.map-row { display: flex; align-items: center; gap: 6px; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+.map-k { color: var(--accent); }
+.map-arrow { color: var(--text-dim); }
+.shape-set { display: flex; flex-wrap: wrap; gap: 5px; }
+.set-chip {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2px 9px;
+  background: var(--panel-bg);
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+}
+.shape-object {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: var(--panel-bg);
+  display: inline-block;
+}
+.obj-cls { font-weight: 700; color: var(--accent); font-size: 0.76rem; margin-bottom: 3px; }
+.obj-row { display: flex; gap: 6px; font-family: ui-monospace, monospace; font-size: 0.78rem; }
+.obj-k { color: var(--text-dim); }
+
 .timeline-item {
   display: flex;
   gap: 8px;
@@ -620,104 +805,105 @@ select { max-width: 220px; }
       <span class="brand-badge">▶</span>
       <div>
         <h1>代码执行演变可视化</h1>
-        <p class="subtitle">粘贴代码，逐行查看它运行时每一行、每个变量是如何变化的</p>
+        <p class="subtitle">粘贴代码，逐行查看它运行时每一行、每个变量是如何变化的 —— 数组、链表、二叉树等结构会自动画成图形</p>
       </div>
     </div>
   </header>
 
   <main class="app-main">
-    <section class="editor-panel">
-      <div class="toolbar">
-        <div class="lang-switch" id="langSwitch" role="tablist">
-          <button type="button" class="lang-btn active" data-lang="javascript">JavaScript</button>
-          <button type="button" class="lang-btn" data-lang="python">Python</button>
-          <button type="button" class="lang-btn" data-lang="java">Java</button>
+    <div class="toolbar card">
+      <div class="lang-switch" id="langSwitch" role="tablist">
+        <button type="button" class="lang-btn active" data-lang="javascript">JavaScript</button>
+        <button type="button" class="lang-btn" data-lang="python">Python</button>
+        <button type="button" class="lang-btn" data-lang="java">Java</button>
+      </div>
+      <select id="exampleSelect" title="加载示例代码">
+        <option value="">— 选择示例代码 —</option>
+      </select>
+      <button id="runBtn" class="btn btn-primary">▶ 运行并可视化</button>
+      <button id="clearBtn" class="btn">清空</button>
+      <label class="heatmap-toggle">
+        <input type="checkbox" id="heatmapToggle" checked>
+        执行热度
+      </label>
+    </div>
+
+    <div class="workspace">
+      <section class="code-pane card">
+        <div class="editor-wrap" id="editorWrap">
+          <div class="gutter" id="gutter"></div>
+          <div class="code-area" id="codeArea">
+            <div class="line-highlight" id="lineHighlight" hidden></div>
+            <textarea id="codeInput" spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off"></textarea>
+          </div>
         </div>
-        <select id="exampleSelect" title="加载示例代码">
-          <option value="">— 选择示例代码 —</option>
-        </select>
-        <button id="runBtn" class="btn btn-primary">▶ 运行并可视化</button>
-        <button id="clearBtn" class="btn">清空</button>
-        <label class="heatmap-toggle">
-          <input type="checkbox" id="heatmapToggle" checked>
-          执行热度
-        </label>
-      </div>
 
-      <div class="editor-wrap" id="editorWrap">
-        <div class="gutter" id="gutter"></div>
-        <div class="code-area" id="codeArea">
-          <div class="line-highlight" id="lineHighlight" hidden></div>
-          <textarea id="codeInput" spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off"></textarea>
+        <div class="testcase-block">
+          <div class="tc-tabs" id="tcTabs"></div>
+          <div class="tc-body">
+            <select id="methodSelect" class="method-select" title="选择要调用的方法"></select>
+            <input type="text" id="entryInput" class="entry-input" placeholder="参数，例如：[1, 2, 3]">
+          </div>
         </div>
-      </div>
 
-      <div class="testcase-block">
-        <div class="tc-tabs" id="tcTabs"></div>
-        <div class="tc-body">
-          <span class="entry-label">调用表达式 <span class="entry-hint">（可选，LeetCode 风格：写一个表达式来调用你的函数/类）</span></span>
-          <input type="text" id="entryInput" class="entry-input" placeholder="例如：Solution().subsets([1, 2, 3])">
+        <div id="statusBox" class="status-box" hidden></div>
+        <div id="errorBox" class="error-box" hidden></div>
+        <div id="outputResultBox" class="output-result-box" hidden>
+          <span class="orb-label">当前用例输出</span>
+          <code id="outputResultValue"></code>
         </div>
-      </div>
 
-      <div id="statusBox" class="status-box" hidden></div>
-      <div id="errorBox" class="error-box" hidden></div>
-      <div id="outputResultBox" class="output-result-box" hidden>
-        <span class="orb-label">当前用例输出</span>
-        <code id="outputResultValue"></code>
-      </div>
+        <div id="resultsBlock" class="results-block" hidden>
+          <div class="results-header">测试结果</div>
+          <div id="resultsList" class="results-list"></div>
+        </div>
+      </section>
 
-      <div id="resultsBlock" class="results-block" hidden>
-        <div class="results-header">测试结果</div>
-        <div id="resultsList" class="results-list"></div>
-      </div>
-
-      <div class="playback-bar">
-        <button id="firstBtn" class="btn icon-btn" title="回到开始">⏮</button>
-        <button id="prevBtn" class="btn icon-btn" title="上一步 (←)">◀</button>
-        <button id="playBtn" class="btn icon-btn" title="播放/暂停 (空格)">▶</button>
-        <button id="nextBtn" class="btn icon-btn" title="下一步 (→)">▶</button>
-        <button id="lastBtn" class="btn icon-btn" title="跳到结束">⏭</button>
-        <input type="range" id="progressSlider" min="0" max="0" value="0" step="1" class="progress-slider">
-        <span id="stepCounter" class="step-counter">0 / 0</span>
-        <label class="speed-label">
-          速度
-          <input type="range" id="speedSlider" min="1" max="10" value="5">
-        </label>
-      </div>
-
-      <div class="current-step-banner" id="currentStepBanner">
-        运行代码以开始可视化 —— 每一步会展示当前执行到的代码行、发生的变化，以及变量的最新取值。
-      </div>
-    </section>
-
-    <aside class="side-panel">
-      <section class="panel-block frames-block">
-        <h2>调用栈 &amp; 变量</h2>
+      <section class="visual-pane card">
+        <div class="current-step-banner" id="currentStepBanner">
+          运行代码以开始可视化 —— 每一步会展示当前执行到的代码行、发生的变化，以及变量的最新取值。
+        </div>
+        <h2 class="visual-pane-title">变量可视化 &amp; 调用栈</h2>
         <div id="framesView" class="frames-view">
           <p class="empty-hint">尚未运行</p>
         </div>
       </section>
+    </div>
 
-      <section class="panel-block timeline-block">
+    <div class="playback-bar card">
+      <button id="firstBtn" class="btn icon-btn" title="回到开始">⏮</button>
+      <button id="prevBtn" class="btn icon-btn" title="上一步 (←)">◀</button>
+      <button id="playBtn" class="btn icon-btn" title="播放/暂停 (空格)">▶</button>
+      <button id="nextBtn" class="btn icon-btn" title="下一步 (→)">▶</button>
+      <button id="lastBtn" class="btn icon-btn" title="跳到结束">⏭</button>
+      <input type="range" id="progressSlider" min="0" max="0" value="0" step="1" class="progress-slider">
+      <span id="stepCounter" class="step-counter">0 / 0</span>
+      <label class="speed-label">
+        速度
+        <input type="range" id="speedSlider" min="1" max="10" value="5">
+      </label>
+    </div>
+
+    <div class="secondary-row">
+      <section class="panel-block timeline-block card">
         <h2>执行时间线</h2>
         <div id="timelineView" class="timeline-view">
           <p class="empty-hint">尚未运行</p>
         </div>
       </section>
 
-      <section class="panel-block console-block">
+      <section class="panel-block console-block card">
         <h2>控制台输出</h2>
         <div id="consoleView" class="console-view">
           <p class="empty-hint">（无输出）</p>
         </div>
       </section>
-    </aside>
+    </div>
   </main>
 
   <footer class="app-footer">
     <p>
-      <strong>JavaScript</strong>：支持变量声明、if/for/while/do-while、函数与递归、数组/对象、解构、模板字符串、try/catch/throw、switch 等；不支持 class、this、async/await。
+      <strong>JavaScript</strong>：支持变量声明、if/for/while/do-while、函数与递归、构造函数与 this、数组/对象、解构、模板字符串、try/catch/throw、switch 等；不支持 class 关键字、async/await。
       <strong>Python</strong>：基于真实的 CPython（通过浏览器内运行的 Pyodide）执行并逐行追踪，支持绝大多数常见语法，包括 class；首次运行 Python 需要联网下载运行环境。
       <strong>Java</strong>：内置的 Java 语法子集解释器，支持 class/方法/继承、if/for/while/switch/try-catch、数组、List/Map/Set/StringBuilder 等常用集合、int 溢出与截断除法等数值语义；不支持泛型擦除之外的反射、多线程、注解处理、接口默认方法等高级特性。
       所有代码均在你的浏览器本地运行，不会上传到任何服务器。
@@ -7184,6 +7370,80 @@ select { max-width: 220px; }
 
   function srcOf(node, ctx) { return ctx.code.slice(node.start, node.end); }
 
+  // ---------- structured shape descriptors (for visual rendering) ----------
+  // Every variable's value is described as a small JSON tree so the UI can
+  // draw arrays as boxes, linked lists as chained boxes with arrows, and
+  // binary trees as an actual tree diagram, instead of just a text dump.
+  let shapeIdCounter = 0;
+  function isPlainObj(v) {
+    return v !== null && typeof v === 'object' && !Array.isArray(v)
+      && !(v instanceof Map) && !(v instanceof Set) && !(v instanceof Date) && !(v instanceof Error) && !(v instanceof RegExp);
+  }
+  function shapeOf(v, depth, seen) {
+    depth = depth || 0;
+    seen = seen || new Set();
+    if (v === null || v === undefined) return { kind: 'null', text: v === null ? 'null' : 'undefined' };
+    const t = typeof v;
+    if (t !== 'object' && t !== 'function') return { kind: 'primitive', text: fmt(v) };
+    if (t === 'function') return { kind: 'primitive', text: fmt(v) };
+    if (seen.has(v)) return { kind: 'primitive', text: '(circular)' };
+    if (depth > 6) return { kind: 'primitive', text: fmt(v, depth) };
+    if (Array.isArray(v)) {
+      seen.add(v);
+      const items = v.slice(0, 60).map((x) => shapeOf(x, depth + 1, seen));
+      return { kind: 'array', items, truncated: v.length > 60, text: fmt(v) };
+    }
+    if (v instanceof Map) {
+      seen.add(v);
+      const entries = Array.from(v.entries()).slice(0, 30).map(([k, val]) => ({ k: shapeOf(k, depth + 1, seen), v: shapeOf(val, depth + 1, seen) }));
+      return { kind: 'map', entries, text: fmt(v) };
+    }
+    if (v instanceof Set) {
+      seen.add(v);
+      const items = Array.from(v.values()).slice(0, 30).map((x) => shapeOf(x, depth + 1, seen));
+      return { kind: 'set', items, text: fmt(v) };
+    }
+    if (v instanceof Date || v instanceof Error || v instanceof RegExp) return { kind: 'primitive', text: fmt(v) };
+    if (isPlainObj(v)) {
+      const keys = Object.keys(v);
+      if (keys.includes('next') && !keys.includes('left') && !keys.includes('right')) {
+        const nodes = [];
+        const ids = new Map();
+        let cur = v;
+        let cyclicTo = null;
+        while (cur !== null && cur !== undefined && nodes.length < 80) {
+          if (ids.has(cur)) { cyclicTo = ids.get(cur); break; }
+          const id = ++shapeIdCounter;
+          ids.set(cur, id);
+          const fields = {};
+          for (const k of Object.keys(cur)) if (k !== 'next') fields[k] = shapeOf(cur[k], depth + 1, new Set());
+          nodes.push({ id, fields });
+          cur = cur.next;
+        }
+        return { kind: 'list', nodes, cyclicTo, text: fmt(v) };
+      }
+      if (keys.includes('left') && keys.includes('right')) {
+        seen.add(v);
+        function buildTree(node, d, localSeen) {
+          if (node === null || node === undefined) return null;
+          const id = ++shapeIdCounter;
+          if (d > 9 || localSeen.has(node)) return { id, fields: {}, left: null, right: null, truncated: true };
+          localSeen.add(node);
+          const fields = {};
+          for (const k of Object.keys(node)) if (k !== 'left' && k !== 'right') fields[k] = shapeOf(node[k], d + 1, new Set());
+          return { id, fields, left: buildTree(node.left, d + 1, localSeen), right: buildTree(node.right, d + 1, localSeen) };
+        }
+        return { kind: 'tree', root: buildTree(v, 0, new Set()), text: fmt(v) };
+      }
+      seen.add(v);
+      const fields = {};
+      const order = [];
+      for (const k of keys.slice(0, 30)) { fields[k] = shapeOf(v[k], depth + 1, seen); order.push(k); }
+      return { kind: 'object', className: v.constructor && v.constructor.name !== 'Object' ? v.constructor.name : null, fields, order, text: fmt(v) };
+    }
+    return { kind: 'primitive', text: fmt(v) };
+  }
+
   // ---------- frame collection for a step snapshot ----------
   function collectFrames(scope) {
     const frames = [];
@@ -7196,7 +7456,7 @@ select { max-width: 220px; }
       }
       for (const [k, entry] of s.vars) {
         if (entry.kind === 'builtin') continue;
-        if (!(k in curVars)) { curVars[k] = fmt(entry.value); curOrder.push(k); }
+        if (!(k in curVars)) { curVars[k] = shapeOf(entry.value); curOrder.push(k); }
       }
       s = s.parent;
     }
@@ -7209,7 +7469,7 @@ select { max-width: 220px; }
     if (ctx.steps.length % 200 === 0 && Date.now() - ctx.startTime > 6000) throw new TimeLimitError();
     const frames = collectFrames(scope);
     const flat = {};
-    frames.forEach(f => f.order.forEach(k => { flat[f.id + ':' + k] = f.vars[k]; }));
+    frames.forEach(f => f.order.forEach(k => { flat[f.id + ':' + k] = f.vars[k].text; }));
     const changed = [];
     for (const key in flat) if (ctx.lastFlat[key] !== flat[key]) changed.push(key);
     for (const key in ctx.lastFlat) if (!(key in flat)) { /* var went out of scope */ }
@@ -7275,7 +7535,7 @@ select { max-width: 220px; }
         if (node.name === 'undefined') return undefined;
         return scope.get(node.name);
       case 'ThisExpression':
-        return undefined;
+        return scope.has('this') ? scope.get('this') : undefined;
       case 'ArrayExpression': {
         const arr = [];
         for (const el of node.elements) {
@@ -7502,18 +7762,22 @@ select { max-width: 220px; }
       exprBody: node.body.type !== 'BlockStatement',
       node,
     };
-    const fn = function (...args) { return invokeMeta(meta, args, ctx); };
+    const fn = function (...args) { return invokeMeta(meta, args, ctx, this); };
     fn.__interpMeta = meta;
     try { Object.defineProperty(fn, 'name', { value: meta.name || 'anonymous' }); } catch (e) {}
     return fn;
   }
 
-  function invokeMeta(meta, args, ctx) {
+  function invokeMeta(meta, args, ctx, thisVal) {
     ctx.callDepth = (ctx.callDepth || 0) + 1;
     if (ctx.callDepth > 400) { ctx.callDepth--; throw new InterpError('调用栈过深，可能存在无限递归 (max depth 400)'); }
     try {
       const frame = new Frame(meta.name || (meta.isArrow ? '(匿名箭头函数)' : '(匿名函数)'));
       const fnScope = new Scope(meta.closureScope, frame);
+      // Arrow functions have no `this` of their own: leave it unbound here so
+      // lookups fall through the closure chain to the enclosing this (or
+      // undefined at top level), matching real JS lexical-this semantics.
+      if (!meta.isArrow && thisVal !== undefined) fnScope.declare('this', thisVal, 'builtin');
       bindParams(meta.params, args, fnScope, ctx);
       let result;
       if (meta.exprBody) {
@@ -8244,6 +8508,82 @@ lodash-es/lodash.js:
     return String(v);
   }
 
+  // ---- structured shape descriptors (for visual rendering) ----
+  // Every variable's value is described as a small JSON tree so the UI can
+  // draw arrays as boxes, linked lists as chained boxes with arrows, and
+  // binary trees as an actual tree diagram, instead of just a text dump.
+  let shapeIdCounter = 0;
+  function jShapeOf(v, depth, seen) {
+    depth = depth || 0; seen = seen || new Set();
+    if (v === null || v === undefined) return { kind: 'null', text: 'null' };
+    if (v instanceof JChar) return { kind: 'primitive', text: jFmt(v) };
+    if (typeof v === 'boolean' || typeof v === 'number' || typeof v === 'string') return { kind: 'primitive', text: jFmt(v) };
+    if (typeof v === 'function') return { kind: 'primitive', text: jFmt(v) };
+    if (seen.has(v)) return { kind: 'primitive', text: '(circular)' };
+    if (depth > 6) return { kind: 'primitive', text: jFmt(v, depth) };
+    if (v instanceof JArray) {
+      seen.add(v);
+      const items = v.a.slice(0, 60).map((x) => jShapeOf(x, depth + 1, seen));
+      return { kind: 'array', items, truncated: v.a.length > 60, text: jFmt(v) };
+    }
+    if (v instanceof JArrayList) {
+      seen.add(v);
+      const items = v.items.slice(0, 60).map((x) => jShapeOf(x, depth + 1, seen));
+      return { kind: 'array', items, truncated: v.items.length > 60, text: jFmt(v) };
+    }
+    if (v instanceof JMapEntry) return { kind: 'primitive', text: jFmt(v) };
+    if (v instanceof JMap) {
+      seen.add(v);
+      const entries = (v.sortedEntries || Array.from(v.m.values())).slice(0, 30).map((e) => ({ k: jShapeOf(e.k, depth + 1, seen), v: jShapeOf(e.v, depth + 1, seen) }));
+      return { kind: 'map', entries, text: jFmt(v) };
+    }
+    if (v instanceof JSet) {
+      seen.add(v);
+      const items = (v.sorted || Array.from(v.m.values())).slice(0, 30).map((x) => jShapeOf(x, depth + 1, seen));
+      return { kind: 'set', items, text: jFmt(v) };
+    }
+    if (v instanceof JStringBuilder) return { kind: 'primitive', text: jFmt(v) };
+    if (v instanceof JObject) {
+      const keys = Object.keys(v.fields);
+      if (keys.includes('next') && !keys.includes('left') && !keys.includes('right')) {
+        const nodes = [];
+        const ids = new Map();
+        let cur = v;
+        let cyclicTo = null;
+        while (cur !== null && cur !== undefined && nodes.length < 80) {
+          if (ids.has(cur)) { cyclicTo = ids.get(cur); break; }
+          const id = ++shapeIdCounter;
+          ids.set(cur, id);
+          const fields = {};
+          const order = [];
+          for (const k of Object.keys(cur.fields)) if (k !== 'next') { fields[k] = jShapeOf(cur.fields[k], depth + 1, new Set()); order.push(k); }
+          nodes.push({ id, fields, order });
+          cur = cur.fields.next;
+        }
+        return { kind: 'list', nodes, cyclicTo, text: jFmt(v) };
+      }
+      if (keys.includes('left') && keys.includes('right')) {
+        function buildTree(node, d, localSeen) {
+          if (node === null || node === undefined) return null;
+          const id = ++shapeIdCounter;
+          if (d > 9 || localSeen.has(node)) return { id, fields: {}, order: [], left: null, right: null, truncated: true };
+          localSeen.add(node);
+          const fields = {};
+          const order = [];
+          for (const k of Object.keys(node.fields)) if (k !== 'left' && k !== 'right') { fields[k] = jShapeOf(node.fields[k], d + 1, new Set()); order.push(k); }
+          return { id, fields, order, left: buildTree(node.fields.left, d + 1, localSeen), right: buildTree(node.fields.right, d + 1, localSeen) };
+        }
+        return { kind: 'tree', root: buildTree(v, 0, new Set()), text: jFmt(v) };
+      }
+      seen.add(v);
+      const fields = {};
+      const order = [];
+      for (const k of keys.slice(0, 30)) { fields[k] = jShapeOf(v.fields[k], depth + 1, seen); order.push(k); }
+      return { kind: 'object', className: v.className, fields, order, text: jFmt(v) };
+    }
+    return { kind: 'primitive', text: jFmt(v) };
+  }
+
   // ================= numeric type promotion =================
   function normType(t) {
     if (t === 'byte' || t === 'short' || t === 'char') return t;
@@ -8389,7 +8729,7 @@ lodash-es/lodash.js:
       }
       for (const [k, entry] of s.vars) {
         if (entry.kind === 'builtin') continue;
-        if (!(k in curVars)) { curVars[k] = jFmt(entry.value); curOrder.push(k); }
+        if (!(k in curVars)) { curVars[k] = jShapeOf(entry.value); curOrder.push(k); }
       }
       s = s.parent;
     }
@@ -8402,7 +8742,7 @@ lodash-es/lodash.js:
     if (ctx.steps.length % 200 === 0 && Date.now() - ctx.startTime > 8000) throw new TimeLimitError();
     const frames = collectFrames(scope);
     const flat = {};
-    frames.forEach((f) => f.order.forEach((k) => { flat[f.id + ':' + k] = f.vars[k]; }));
+    frames.forEach((f) => f.order.forEach((k) => { flat[f.id + ':' + k] = f.vars[k].text; }));
     const changed = [];
     for (const key in flat) if (ctx.lastFlat[key] !== flat[key]) changed.push(key);
     ctx.lastFlat = flat;
@@ -10007,6 +10347,87 @@ def _fmt(v, depth=0, seen=None):
 def _is_function_frame(frame):
     return bool(frame.f_code.co_flags & 0x02)  # CO_NEWLOCALS
 
+# ---- structured shape descriptors (for visual rendering) ----
+# Every variable's value is described as a small JSON tree so the UI can draw
+# arrays as boxes, linked lists as chained boxes with arrows, and binary
+# trees as an actual tree diagram, instead of just a text dump.
+_shape_id_counter = [0]
+def _next_shape_id():
+    _shape_id_counter[0] += 1
+    return _shape_id_counter[0]
+
+def _own_fields(v, exclude=()):
+    out = {}
+    try:
+        for k, val in vars(v).items():
+            if k.startswith('_') or k in exclude:
+                continue
+            out[k] = val
+    except Exception:
+        pass
+    return out
+
+def _shape_of(v, depth=0, seen=None):
+    if seen is None: seen = frozenset()
+    try:
+        if v is None: return {'kind': 'null', 'text': 'None'}
+        if isinstance(v, bool): return {'kind': 'primitive', 'text': _fmt(v)}
+        if isinstance(v, (int, float, complex, str)): return {'kind': 'primitive', 'text': _fmt(v)}
+        oid = id(v)
+        if oid in seen: return {'kind': 'primitive', 'text': '(circular)'}
+        if depth > 6: return {'kind': 'primitive', 'text': _fmt(v, depth)}
+        if isinstance(v, (list, tuple)):
+            items = [_shape_of(x, depth + 1, seen | {oid}) for x in list(v)[:60]]
+            return {'kind': 'array', 'items': items, 'truncated': len(v) > 60, 'text': _fmt(v)}
+        if isinstance(v, dict):
+            entries = [{'k': _shape_of(k, depth + 1, seen | {oid}), 'v': _shape_of(val, depth + 1, seen | {oid})} for k, val in list(v.items())[:30]]
+            return {'kind': 'map', 'entries': entries, 'text': _fmt(v)}
+        if isinstance(v, (set, frozenset)):
+            items = [_shape_of(x, depth + 1, seen | {oid}) for x in list(v)[:30]]
+            return {'kind': 'set', 'items': items, 'text': _fmt(v)}
+        if callable(v):
+            return {'kind': 'primitive', 'text': _fmt(v)}
+        if hasattr(v, '__dict__'):
+            fields_raw = _own_fields(v)
+            keys = list(fields_raw.keys())
+            if 'next' in keys and 'left' not in keys and 'right' not in keys:
+                nodes = []
+                ids = {}
+                cur = v
+                cyclic_to = None
+                while cur is not None and len(nodes) < 80:
+                    cid = id(cur)
+                    if cid in ids:
+                        cyclic_to = ids[cid]
+                        break
+                    nid = _next_shape_id()
+                    ids[cid] = nid
+                    cur_fields_raw = _own_fields(cur, exclude=('next',))
+                    fields = {k: _shape_of(val, depth + 1, frozenset()) for k, val in cur_fields_raw.items()}
+                    nodes.append({'id': nid, 'fields': fields, 'order': list(cur_fields_raw.keys())})
+                    cur = getattr(cur, 'next', None)
+                return {'kind': 'list', 'nodes': nodes, 'cyclicTo': cyclic_to, 'text': _fmt(v)}
+            if 'left' in keys and 'right' in keys:
+                def build_tree(node, d, local_seen):
+                    if node is None: return None
+                    nid = _next_shape_id()
+                    if d > 9 or id(node) in local_seen:
+                        return {'id': nid, 'fields': {}, 'order': [], 'left': None, 'right': None, 'truncated': True}
+                    local_seen = local_seen | {id(node)}
+                    fr = _own_fields(node, exclude=('left', 'right'))
+                    fields = {k: _shape_of(val, d + 1, frozenset()) for k, val in fr.items()}
+                    return {
+                        'id': nid, 'fields': fields, 'order': list(fr.keys()),
+                        'left': build_tree(getattr(node, 'left', None), d + 1, local_seen),
+                        'right': build_tree(getattr(node, 'right', None), d + 1, local_seen),
+                    }
+                return {'kind': 'tree', 'root': build_tree(v, 0, frozenset()), 'text': _fmt(v)}
+            fields = {k: _shape_of(val, depth + 1, seen | {oid}) for k, val in fields_raw.items()}
+            return {'kind': 'object', 'className': type(v).__name__, 'fields': fields, 'order': list(fields_raw.keys()), 'text': _fmt(v)}
+        return {'kind': 'primitive', 'text': _fmt(v)}
+    except Exception:
+        return {'kind': 'primitive', 'text': '<unrepr>'}
+
 def _collect_frames(frame):
     frames = []
     f = frame
@@ -10020,7 +10441,7 @@ def _collect_frames(frame):
         order = [k for k in f.f_locals.keys() if not k.startswith('__') or k == '__entry_result__']
         vars_ = {}
         for k in order:
-            vars_[k] = _fmt(f.f_locals[k])
+            vars_[k] = _shape_of(f.f_locals[k])
         frames.append({'id': fid, 'name': name, 'vars': vars_, 'order': order})
         f = f.f_back
     return frames
@@ -10034,7 +10455,7 @@ def _record(frame, label, kind):
     flat = {}
     for fr in frames:
         for k in fr['order']:
-            flat['%s:%s' % (fr['id'], k)] = fr['vars'][k]
+            flat['%s:%s' % (fr['id'], k)] = fr['vars'][k]['text']
     changed = [k for k in flat if _lastFlat.get(k) != flat[k]]
     _lastFlat.clear()
     _lastFlat.update(flat)
@@ -10240,6 +10661,167 @@ def _run(source, entry_expr):
   }
 
   window.PyRunner = { runPythonCode };
+})();
+
+  </script>
+  <script>
+// Best-effort (regex-based, not a real parse) detection of callable
+// class/top-level methods in the user's pasted code, so the "调用表达式"
+// field can just be arguments (LeetCode-style) instead of a full call
+// expression. Falls back to "自定义表达式" (raw expression) mode when
+// nothing is detected or the user picks it explicitly.
+(function () {
+  'use strict';
+
+  const JAVA_JS_SKIP_NAMES = new Set(['if', 'for', 'while', 'switch', 'catch', 'synchronized', 'try', 'else', 'do', 'function']);
+
+  // Finds the index of the `}` matching the `{` at code[openIdx], skipping
+  // over string/char/template literals and comments so braces inside them
+  // don't throw off the count.
+  function findMatchingBrace(code, openIdx) {
+    let depth = 0;
+    for (let i = openIdx; i < code.length; i++) {
+      const c = code[i];
+      if (c === '"' || c === "'" || c === '`') {
+        const quote = c;
+        i++;
+        while (i < code.length && code[i] !== quote) { if (code[i] === '\\') i++; i++; }
+        continue;
+      }
+      if (c === '/' && code[i + 1] === '/') { while (i < code.length && code[i] !== '\n') i++; continue; }
+      if (c === '/' && code[i + 1] === '*') { i += 2; while (i < code.length && !(code[i] === '*' && code[i + 1] === '/')) i++; i++; continue; }
+      if (c === '{') depth++;
+      else if (c === '}') { depth--; if (depth === 0) return i; }
+    }
+    return code.length - 1;
+  }
+
+  function splitParams(s) {
+    s = (s || '').trim();
+    if (!s) return [];
+    return s.split(',').map((p) => p.trim()).filter(Boolean);
+  }
+
+  function lastToken(paramText) {
+    // Java/typed params look like "int[] nums" or "List<Integer> path" -> take the identifier name.
+    const cleaned = paramText.replace(/<[^<>]*>/g, '').trim();
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1].replace(/^\.\.\./, '').replace(/\[\]$/, '') : paramText;
+  }
+
+  function detectJavaScript(code) {
+    const results = [];
+    const classRe = /\bclass\s+([A-Za-z_$][\w$]*)[^{]*\{/g;
+    let m;
+    while ((m = classRe.exec(code))) {
+      const className = m[1];
+      const bodyStart = m.index + m[0].length;
+      const bodyEnd = findMatchingBrace(code, bodyStart - 1);
+      const body = code.slice(bodyStart, bodyEnd);
+      const methodRe = /(?:^|[;{}\s])(static\s+)?([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*\{/g;
+      let mm;
+      while ((mm = methodRe.exec(body))) {
+        const isStatic = !!mm[1];
+        const name = mm[2];
+        if (name === className || name === 'constructor' || JAVA_JS_SKIP_NAMES.has(name)) continue;
+        const params = splitParams(mm[3]);
+        results.push({
+          label: `${className}.${name}(${params.join(', ')})`,
+          prefix: isStatic ? `${className}.${name}` : `new ${className}().${name}`,
+          params,
+        });
+      }
+    }
+    const funcRe = /(?:^|\n)\s*function\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)/g;
+    while ((m = funcRe.exec(code))) {
+      const name = m[1];
+      const params = splitParams(m[2]);
+      results.push({ label: `${name}(${params.join(', ')})`, prefix: name, params });
+    }
+    const varFuncRe = /(?:^|\n)\s*(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*function\s*\(([^)]*)\)/g;
+    while ((m = varFuncRe.exec(code))) {
+      const name = m[1];
+      if (results.some((r) => r.prefix === name)) continue;
+      const params = splitParams(m[2]);
+      results.push({ label: `${name}(${params.join(', ')})`, prefix: name, params });
+    }
+    return results;
+  }
+
+  function detectPython(code) {
+    const results = [];
+    const lines = code.split('\n');
+    let currentClass = null;
+    for (const line of lines) {
+      const classM = /^class\s+([A-Za-z_]\w*)/.exec(line);
+      if (classM) { currentClass = classM[1]; continue; }
+      const methodM = /^\s{2,}def\s+([A-Za-z_]\w*)\s*\(\s*self\s*(?:,\s*(.*))?\)\s*:/.exec(line);
+      if (methodM && currentClass && /^\s{4}def\s/.test(line)) {
+        const name = methodM[1];
+        if (name.startsWith('__')) continue;
+        const params = methodM[2] ? splitParams(methodM[2]).map((p) => p.split('=')[0].trim()) : [];
+        results.push({ label: `${currentClass}.${name}(${params.join(', ')})`, prefix: `${currentClass}().${name}`, params });
+        continue;
+      }
+      const topM = /^def\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*:/.exec(line);
+      if (topM) {
+        const name = topM[1];
+        const params = splitParams(topM[2]).map((p) => p.split('=')[0].trim());
+        results.push({ label: `${name}(${params.join(', ')})`, prefix: name, params });
+      }
+    }
+    return results;
+  }
+
+  function detectJava(code) {
+    const results = [];
+    const classRe = /\bclass\s+([A-Za-z_]\w*)[^{]*\{/g;
+    let m;
+    while ((m = classRe.exec(code))) {
+      const className = m[1];
+      const bodyStart = m.index + m[0].length;
+      const bodyEnd = findMatchingBrace(code, bodyStart - 1);
+      const body = code.slice(bodyStart, bodyEnd);
+      const methodRe = /(?:^|[;{}])\s*((?:(?:public|private|protected|static|final|synchronized)\s+)*)[\w<>\[\],.\s]+?\s+([A-Za-z_]\w*)\s*\(([^)]*)\)\s*(?:throws\s+[\w,\s.]+)?\{/g;
+      let mm;
+      while ((mm = methodRe.exec(body))) {
+        const modifiers = mm[1] || '';
+        const isStatic = /\bstatic\b/.test(modifiers);
+        const isPrivate = /\bprivate\b/.test(modifiers);
+        const name = mm[2];
+        if (name === className || name === 'main' || JAVA_JS_SKIP_NAMES.has(name)) continue;
+        const params = splitParams(mm[3]).map(lastToken);
+        results.push({
+          label: `${className}.${name}(${params.join(', ')})`,
+          prefix: isStatic ? `${className}.${name}` : `new ${className}().${name}`,
+          params,
+          rank: isPrivate ? 1 : 0,
+        });
+      }
+    }
+    return results;
+  }
+
+  function detectCallables(language, code) {
+    let results = [];
+    try {
+      if (language === 'javascript') results = detectJavaScript(code);
+      else if (language === 'python') results = detectPython(code);
+      else if (language === 'java') results = detectJava(code);
+    } catch (e) {
+      // best-effort: never let a detection bug block running the code
+      return [];
+    }
+    // Stable sort: public/non-helper methods first, so the default
+    // selection lands on the method you're most likely testing, not an
+    // internal helper like a recursive backtrack() worker.
+    return results
+      .map((r, i) => ({ r, i }))
+      .sort((a, b) => (a.r.rank || 0) - (b.r.rank || 0) || a.i - b.i)
+      .map((x) => x.r);
+  }
+
+  window.detectCallables = detectCallables;
 })();
 
   </script>
@@ -10490,6 +11072,7 @@ class Solution {
     lineHighlight: document.getElementById('lineHighlight'),
     codeInput: document.getElementById('codeInput'),
     entryInput: document.getElementById('entryInput'),
+    methodSelect: document.getElementById('methodSelect'),
     tcTabs: document.getElementById('tcTabs'),
     statusBox: document.getElementById('statusBox'),
     errorBox: document.getElementById('errorBox'),
@@ -10520,8 +11103,9 @@ class Solution {
     playTimer: null,
     userLineCount: 0,
     running: false,
-    cases: [{ name: '用例 1', entry: '' }],
+    cases: [{ name: '用例 1', method: 'manual', args: '' }],
     activeCase: 0,
+    detected: [],
   };
 
   // ---------------- language switch ----------------
@@ -10530,12 +11114,6 @@ class Solution {
     if (!btn || btn.classList.contains('active')) return;
     Array.from(el.langSwitch.children).forEach((b) => b.classList.toggle('active', b === btn));
     state.language = btn.dataset.lang;
-    const placeholders = {
-      javascript: '例如：twoSum([2, 7, 11, 15], 9)',
-      python: '例如：Solution().subsets([1, 2, 3])',
-      java: '例如：new Solution().subsets(new int[]{1, 2, 3})',
-    };
-    el.entryInput.placeholder = placeholders[state.language] || '';
     populateExamples();
     const names = Object.keys(window.EXAMPLES[state.language] || {});
     if (names.length) loadExample(names[0]);
@@ -10554,14 +11132,77 @@ class Solution {
     });
   }
 
+  // ---------------- method auto-detection ----------------
+  // Instead of asking the user to write a full call expression, we scan the
+  // pasted code for callable methods/functions and let them pick one from a
+  // dropdown, typing only the arguments (LeetCode-style). "自定义表达式"
+  // falls back to the old raw-expression behavior when nothing is detected
+  // or matched.
+  function refreshDetection() {
+    state.detected = (window.detectCallables && window.detectCallables(state.language, el.codeInput.value)) || [];
+    el.methodSelect.innerHTML = '';
+    state.detected.forEach((m, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = m.label;
+      el.methodSelect.appendChild(opt);
+    });
+    const manualOpt = document.createElement('option');
+    manualOpt.value = 'manual';
+    manualOpt.textContent = '自定义表达式…';
+    el.methodSelect.appendChild(manualOpt);
+  }
+
+  function methodByValue(val) {
+    if (val === 'manual' || val === undefined || val === null) return null;
+    const idx = Number(val);
+    return state.detected[idx] || null;
+  }
+
+  // Builds the actual call expression to execute from a case's {method, args}:
+  // a detected method wraps the bare args in its call prefix (LeetCode-style,
+  // e.g. "new Solution().subsets(" + "[1, 2, 3]" + ")"); "manual" mode treats
+  // `args` as the full expression already, unchanged.
+  function computeEntryExpr(caseObj) {
+    if (!caseObj) return '';
+    const m = methodByValue(caseObj.method);
+    const args = (caseObj.args || '').trim();
+    if (m) return `${m.prefix}(${args})`;
+    return args;
+  }
+
+  function updateEntryPlaceholder() {
+    const c = state.cases[state.activeCase];
+    const m = methodByValue(c && c.method);
+    el.entryInput.placeholder = m
+      ? (m.params.length ? `参数，例如：${m.params.join(', ')}` : '（无参数，留空即可）')
+      : '完整调用表达式，例如：Solution().subsets([1, 2, 3])';
+  }
+
+  // Matches an example's full call expression (e.g. "new Solution().subsets([1,2,3])")
+  // back to a detected method + its bare arguments, so examples still work
+  // with the args-only UI without having to hand-maintain both forms.
+  function matchEntryToMethod(entry, detected) {
+    if (!entry) return { method: 'manual', args: '' };
+    for (let i = 0; i < detected.length; i++) {
+      const p = detected[i].prefix;
+      if (entry.startsWith(p + '(') && entry.endsWith(')')) {
+        return { method: String(i), args: entry.slice(p.length + 1, -1) };
+      }
+    }
+    return { method: 'manual', args: entry };
+  }
+
   function loadExample(name) {
     const ex = (window.EXAMPLES[state.language] || {})[name];
     if (!ex) return;
     el.codeInput.value = ex.code;
-    state.cases = [{ name: '用例 1', entry: ex.entry || '' }];
+    refreshDetection();
+    const matched = matchEntryToMethod(ex.entry || '', state.detected);
+    state.cases = [{ name: '用例 1', method: matched.method, args: matched.args }];
     state.activeCase = 0;
-    el.entryInput.value = ex.entry || '';
     el.exampleSelect.value = name;
+    applyActiveCaseToUI();
     renderTabs();
     hideResults();
     resizeEditor();
@@ -10602,13 +11243,26 @@ class Solution {
   }
 
   function syncActiveEntry() {
-    if (state.cases[state.activeCase]) state.cases[state.activeCase].entry = el.entryInput.value;
+    const c = state.cases[state.activeCase];
+    if (!c) return;
+    c.method = el.methodSelect.value;
+    c.args = el.entryInput.value;
+  }
+
+  function applyActiveCaseToUI() {
+    const c = state.cases[state.activeCase];
+    if (!c) return;
+    const hasOption = Array.from(el.methodSelect.options).some((o) => o.value === c.method);
+    el.methodSelect.value = hasOption ? c.method : 'manual';
+    if (!hasOption) c.method = 'manual';
+    el.entryInput.value = c.args || '';
+    updateEntryPlaceholder();
   }
 
   function switchCase(i) {
     syncActiveEntry();
     state.activeCase = i;
-    el.entryInput.value = state.cases[i].entry || '';
+    applyActiveCaseToUI();
     renderTabs();
     showOutputResult(null);
     if (el.resultsBlock && !el.resultsBlock.hidden) {
@@ -10618,9 +11272,10 @@ class Solution {
 
   function addCase() {
     syncActiveEntry();
-    state.cases.push({ name: '用例 ' + (state.cases.length + 1), entry: state.cases[state.activeCase].entry || '' });
+    const cur = state.cases[state.activeCase];
+    state.cases.push({ name: '用例 ' + (state.cases.length + 1), method: cur.method, args: cur.args });
     state.activeCase = state.cases.length - 1;
-    el.entryInput.value = state.cases[state.activeCase].entry || '';
+    applyActiveCaseToUI();
     renderTabs();
   }
 
@@ -10630,9 +11285,14 @@ class Solution {
     state.cases.forEach((c, idx) => { c.name = '用例 ' + (idx + 1); });
     if (state.activeCase >= state.cases.length) state.activeCase = state.cases.length - 1;
     else if (state.activeCase > i) state.activeCase--;
-    el.entryInput.value = state.cases[state.activeCase].entry || '';
+    applyActiveCaseToUI();
     renderTabs();
   }
+
+  el.methodSelect.addEventListener('change', () => {
+    syncActiveEntry();
+    updateEntryPlaceholder();
+  });
 
   // ---------------- editor (textarea + gutter) ----------------
   function currentLineCount() {
@@ -10662,6 +11322,8 @@ class Solution {
   el.codeInput.addEventListener('input', () => {
     resizeEditor();
     renderGutter();
+    refreshDetection();
+    applyActiveCaseToUI();
     onCodeChanged();
   });
   el.codeInput.addEventListener('keydown', (e) => {
@@ -10687,9 +11349,10 @@ class Solution {
 
   el.clearBtn.addEventListener('click', () => {
     el.codeInput.value = '';
-    state.cases = [{ name: '用例 1', entry: '' }];
+    refreshDetection();
+    state.cases = [{ name: '用例 1', method: 'manual', args: '' }];
     state.activeCase = 0;
-    el.entryInput.value = '';
+    applyActiveCaseToUI();
     el.exampleSelect.value = '';
     renderTabs();
     hideResults();
@@ -10773,7 +11436,7 @@ class Solution {
     showOutputResult(null);
     state.userLineCount = code.split('\n').length;
 
-    const activeEntry = (state.cases[state.activeCase].entry || '').trim();
+    const activeEntry = computeEntryExpr(state.cases[state.activeCase]);
     let ctx;
     try {
       if (state.language === 'python') showStatus('准备运行…');
@@ -10818,7 +11481,7 @@ class Solution {
       const results = [];
       for (let i = 0; i < state.cases.length; i++) {
         const c = state.cases[i];
-        const entry = (c.entry || '').trim();
+        const entry = computeEntryExpr(c);
         if (!entry) { results.push({ skip: true }); continue; }
         let caseCtx;
         if (i === state.activeCase) caseCtx = ctx;
@@ -10848,7 +11511,7 @@ class Solution {
       const frames = ctx.steps[i].frames;
       for (const f of frames) {
         if (Object.prototype.hasOwnProperty.call(f.vars, ENTRY_VAR)) {
-          return f.vars[ENTRY_VAR];
+          return f.vars[ENTRY_VAR].text;
         }
       }
     }
@@ -10878,8 +11541,9 @@ class Solution {
     }
 
     if (isEntryStep) {
+      const fullExpr = computeEntryExpr(state.cases[state.activeCase]);
       el.currentStepBanner.innerHTML =
-        `<span class="kw">调用入口</span>　<code>${escapeHtml(el.entryInput.value.trim())}</code>`;
+        `<span class="kw">调用入口</span>　<code>${escapeHtml(fullExpr)}</code>`;
     } else {
       const kindLabel = KIND_LABEL[step.kind] || '';
       el.currentStepBanner.innerHTML =
@@ -10927,6 +11591,104 @@ class Solution {
     }
   }
 
+  // ---------------- shape-based variable visualization ----------------
+  // Renders the structured {kind, ...} descriptors the interpreters attach to
+  // every variable: primitives as plain text, arrays as boxed cells, linked
+  // lists as chained boxes with arrows, binary trees as an actual tree
+  // diagram, maps/sets as chips, and generic objects as field cards.
+  function renderShape(shape, depth) {
+    depth = depth || 0;
+    if (!shape) return '<span class="shape-null">null</span>';
+    switch (shape.kind) {
+      case 'null': return `<span class="shape-null">${escapeHtml(shape.text)}</span>`;
+      case 'array': return renderArrayShape(shape, depth);
+      case 'list': return renderListShape(shape);
+      case 'tree': return renderTreeShape(shape);
+      case 'map': return renderMapShape(shape, depth);
+      case 'set': return renderSetShape(shape, depth);
+      case 'object': return renderObjectShape(shape, depth);
+      default: return `<span class="shape-primitive">${escapeHtml(shape.text || '')}</span>`;
+    }
+  }
+
+  function renderArrayShape(shape, depth) {
+    if (depth > 3) return `<span class="shape-primitive">${escapeHtml(shape.text)}</span>`;
+    if (!shape.items.length) return `<span class="shape-primitive">[]</span>`;
+    const cells = shape.items.map((it, i) => {
+      const nested = it && it.kind === 'array';
+      return `<div class="arr-cell ${nested ? 'nested' : ''}">
+          <div class="arr-val">${renderShape(it, depth + 1)}</div>
+          <div class="arr-idx">${i}</div>
+        </div>`;
+    }).join('');
+    return `<div class="shape-array">${cells}${shape.truncated ? '<div class="arr-more">…</div>' : ''}</div>`;
+  }
+
+  function renderListShape(shape) {
+    if (!shape.nodes.length) return `<span class="shape-primitive">null</span>`;
+    const boxes = shape.nodes.map((n, i) => {
+      const fieldsHtml = (n.order || Object.keys(n.fields)).map((k) =>
+        `<div class="list-field"><span class="lf-name">${escapeHtml(k)}</span><span class="lf-val">${renderShape(n.fields[k], 1)}</span></div>`
+      ).join('');
+      const showArrow = i < shape.nodes.length - 1 || shape.cyclicTo !== null;
+      return `<div class="list-node-wrap">
+          <div class="list-node">${fieldsHtml}</div>
+          ${showArrow ? '<div class="list-arrow">→</div>' : ''}
+        </div>`;
+    }).join('');
+    let tail;
+    if (shape.cyclicTo !== null) {
+      const targetIdx = shape.nodes.findIndex((n) => n.id === shape.cyclicTo);
+      tail = `<div class="list-cycle" title="回到第 ${targetIdx + 1} 个节点">⟲ 循环</div>`;
+    } else {
+      tail = `<div class="list-null">null</div>`;
+    }
+    return `<div class="shape-list">${boxes}${tail}</div>`;
+  }
+
+  function renderTreeNode(node) {
+    if (!node) return `<div class="tree-slot"><div class="tree-box empty">∅</div></div>`;
+    const order = node.order || Object.keys(node.fields);
+    const label = order.length
+      ? order.map((k) => renderShape(node.fields[k], 1)).join(', ')
+      : '·';
+    const hasChildren = !!(node.left || node.right);
+    return `<div class="tree-slot">
+        <div class="tree-box">${label}</div>
+        ${hasChildren ? `<div class="tree-children">
+            <div class="tree-child">${renderTreeNode(node.left)}</div>
+            <div class="tree-child">${renderTreeNode(node.right)}</div>
+          </div>` : ''}
+      </div>`;
+  }
+  function renderTreeShape(shape) {
+    if (!shape.root) return `<span class="shape-primitive">null</span>`;
+    return `<div class="shape-tree">${renderTreeNode(shape.root)}</div>`;
+  }
+
+  function renderMapShape(shape, depth) {
+    if (!shape.entries.length) return `<span class="shape-primitive">{}</span>`;
+    const rows = shape.entries.map((e) =>
+      `<div class="map-row"><span class="map-k">${renderShape(e.k, depth + 1)}</span><span class="map-arrow">→</span><span class="map-v">${renderShape(e.v, depth + 1)}</span></div>`
+    ).join('');
+    return `<div class="shape-map">${rows}</div>`;
+  }
+
+  function renderSetShape(shape, depth) {
+    if (!shape.items.length) return `<span class="shape-primitive">{}</span>`;
+    return `<div class="shape-set">${shape.items.map((x) => `<span class="set-chip">${renderShape(x, depth + 1)}</span>`).join('')}</div>`;
+  }
+
+  function renderObjectShape(shape, depth) {
+    if (depth > 2) return `<span class="shape-primitive">${escapeHtml(shape.text)}</span>`;
+    const order = shape.order || Object.keys(shape.fields);
+    if (!order.length) return `<span class="shape-primitive">${escapeHtml(shape.text)}</span>`;
+    const rows = order.map((k) =>
+      `<div class="obj-row"><span class="obj-k">${escapeHtml(k)}</span><span class="obj-v">${renderShape(shape.fields[k], depth + 1)}</span></div>`
+    ).join('');
+    return `<div class="shape-object">${shape.className ? `<div class="obj-cls">${escapeHtml(shape.className)}</div>` : ''}${rows}</div>`;
+  }
+
   function renderFrames(step) {
     if (!step) {
       el.framesView.innerHTML = '<p class="empty-hint">尚未运行</p>';
@@ -10941,12 +11703,16 @@ class Solution {
         html += `<div class="empty-hint">（无变量）</div>`;
       } else {
         names.forEach((name) => {
-          const val = f.vars[name];
+          const shape = f.vars[name];
           const key = f.id + ':' + name;
           const changed = changedSet.has(key);
-          html += `<div class="var-row ${changed ? 'changed' : ''}">
-              <span class="vname">${escapeHtml(name)}</span>
-              <span class="vval">${escapeHtml(val)}</span>
+          const isComplex = shape.kind !== 'primitive' && shape.kind !== 'null';
+          html += `<div class="var-block ${changed ? 'changed' : ''}">
+              <div class="var-name-row">
+                <span class="vname">${escapeHtml(name)}</span>
+                ${isComplex ? '' : `<span class="vval">${escapeHtml(shape.text)}</span>`}
+              </div>
+              ${isComplex ? `<div class="var-visual">${renderShape(shape)}</div>` : ''}
             </div>`;
         });
       }

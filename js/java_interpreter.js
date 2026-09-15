@@ -294,6 +294,82 @@
     return String(v);
   }
 
+  // ---- structured shape descriptors (for visual rendering) ----
+  // Every variable's value is described as a small JSON tree so the UI can
+  // draw arrays as boxes, linked lists as chained boxes with arrows, and
+  // binary trees as an actual tree diagram, instead of just a text dump.
+  let shapeIdCounter = 0;
+  function jShapeOf(v, depth, seen) {
+    depth = depth || 0; seen = seen || new Set();
+    if (v === null || v === undefined) return { kind: 'null', text: 'null' };
+    if (v instanceof JChar) return { kind: 'primitive', text: jFmt(v) };
+    if (typeof v === 'boolean' || typeof v === 'number' || typeof v === 'string') return { kind: 'primitive', text: jFmt(v) };
+    if (typeof v === 'function') return { kind: 'primitive', text: jFmt(v) };
+    if (seen.has(v)) return { kind: 'primitive', text: '(circular)' };
+    if (depth > 6) return { kind: 'primitive', text: jFmt(v, depth) };
+    if (v instanceof JArray) {
+      seen.add(v);
+      const items = v.a.slice(0, 60).map((x) => jShapeOf(x, depth + 1, seen));
+      return { kind: 'array', items, truncated: v.a.length > 60, text: jFmt(v) };
+    }
+    if (v instanceof JArrayList) {
+      seen.add(v);
+      const items = v.items.slice(0, 60).map((x) => jShapeOf(x, depth + 1, seen));
+      return { kind: 'array', items, truncated: v.items.length > 60, text: jFmt(v) };
+    }
+    if (v instanceof JMapEntry) return { kind: 'primitive', text: jFmt(v) };
+    if (v instanceof JMap) {
+      seen.add(v);
+      const entries = (v.sortedEntries || Array.from(v.m.values())).slice(0, 30).map((e) => ({ k: jShapeOf(e.k, depth + 1, seen), v: jShapeOf(e.v, depth + 1, seen) }));
+      return { kind: 'map', entries, text: jFmt(v) };
+    }
+    if (v instanceof JSet) {
+      seen.add(v);
+      const items = (v.sorted || Array.from(v.m.values())).slice(0, 30).map((x) => jShapeOf(x, depth + 1, seen));
+      return { kind: 'set', items, text: jFmt(v) };
+    }
+    if (v instanceof JStringBuilder) return { kind: 'primitive', text: jFmt(v) };
+    if (v instanceof JObject) {
+      const keys = Object.keys(v.fields);
+      if (keys.includes('next') && !keys.includes('left') && !keys.includes('right')) {
+        const nodes = [];
+        const ids = new Map();
+        let cur = v;
+        let cyclicTo = null;
+        while (cur !== null && cur !== undefined && nodes.length < 80) {
+          if (ids.has(cur)) { cyclicTo = ids.get(cur); break; }
+          const id = ++shapeIdCounter;
+          ids.set(cur, id);
+          const fields = {};
+          const order = [];
+          for (const k of Object.keys(cur.fields)) if (k !== 'next') { fields[k] = jShapeOf(cur.fields[k], depth + 1, new Set()); order.push(k); }
+          nodes.push({ id, fields, order });
+          cur = cur.fields.next;
+        }
+        return { kind: 'list', nodes, cyclicTo, text: jFmt(v) };
+      }
+      if (keys.includes('left') && keys.includes('right')) {
+        function buildTree(node, d, localSeen) {
+          if (node === null || node === undefined) return null;
+          const id = ++shapeIdCounter;
+          if (d > 9 || localSeen.has(node)) return { id, fields: {}, order: [], left: null, right: null, truncated: true };
+          localSeen.add(node);
+          const fields = {};
+          const order = [];
+          for (const k of Object.keys(node.fields)) if (k !== 'left' && k !== 'right') { fields[k] = jShapeOf(node.fields[k], d + 1, new Set()); order.push(k); }
+          return { id, fields, order, left: buildTree(node.fields.left, d + 1, localSeen), right: buildTree(node.fields.right, d + 1, localSeen) };
+        }
+        return { kind: 'tree', root: buildTree(v, 0, new Set()), text: jFmt(v) };
+      }
+      seen.add(v);
+      const fields = {};
+      const order = [];
+      for (const k of keys.slice(0, 30)) { fields[k] = jShapeOf(v.fields[k], depth + 1, seen); order.push(k); }
+      return { kind: 'object', className: v.className, fields, order, text: jFmt(v) };
+    }
+    return { kind: 'primitive', text: jFmt(v) };
+  }
+
   // ================= numeric type promotion =================
   function normType(t) {
     if (t === 'byte' || t === 'short' || t === 'char') return t;
@@ -439,7 +515,7 @@
       }
       for (const [k, entry] of s.vars) {
         if (entry.kind === 'builtin') continue;
-        if (!(k in curVars)) { curVars[k] = jFmt(entry.value); curOrder.push(k); }
+        if (!(k in curVars)) { curVars[k] = jShapeOf(entry.value); curOrder.push(k); }
       }
       s = s.parent;
     }
@@ -452,7 +528,7 @@
     if (ctx.steps.length % 200 === 0 && Date.now() - ctx.startTime > 8000) throw new TimeLimitError();
     const frames = collectFrames(scope);
     const flat = {};
-    frames.forEach((f) => f.order.forEach((k) => { flat[f.id + ':' + k] = f.vars[k]; }));
+    frames.forEach((f) => f.order.forEach((k) => { flat[f.id + ':' + k] = f.vars[k].text; }));
     const changed = [];
     for (const key in flat) if (ctx.lastFlat[key] !== flat[key]) changed.push(key);
     ctx.lastFlat = flat;

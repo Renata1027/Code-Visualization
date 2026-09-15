@@ -63,6 +63,87 @@ def _fmt(v, depth=0, seen=None):
 def _is_function_frame(frame):
     return bool(frame.f_code.co_flags & 0x02)  # CO_NEWLOCALS
 
+# ---- structured shape descriptors (for visual rendering) ----
+# Every variable's value is described as a small JSON tree so the UI can draw
+# arrays as boxes, linked lists as chained boxes with arrows, and binary
+# trees as an actual tree diagram, instead of just a text dump.
+_shape_id_counter = [0]
+def _next_shape_id():
+    _shape_id_counter[0] += 1
+    return _shape_id_counter[0]
+
+def _own_fields(v, exclude=()):
+    out = {}
+    try:
+        for k, val in vars(v).items():
+            if k.startswith('_') or k in exclude:
+                continue
+            out[k] = val
+    except Exception:
+        pass
+    return out
+
+def _shape_of(v, depth=0, seen=None):
+    if seen is None: seen = frozenset()
+    try:
+        if v is None: return {'kind': 'null', 'text': 'None'}
+        if isinstance(v, bool): return {'kind': 'primitive', 'text': _fmt(v)}
+        if isinstance(v, (int, float, complex, str)): return {'kind': 'primitive', 'text': _fmt(v)}
+        oid = id(v)
+        if oid in seen: return {'kind': 'primitive', 'text': '(circular)'}
+        if depth > 6: return {'kind': 'primitive', 'text': _fmt(v, depth)}
+        if isinstance(v, (list, tuple)):
+            items = [_shape_of(x, depth + 1, seen | {oid}) for x in list(v)[:60]]
+            return {'kind': 'array', 'items': items, 'truncated': len(v) > 60, 'text': _fmt(v)}
+        if isinstance(v, dict):
+            entries = [{'k': _shape_of(k, depth + 1, seen | {oid}), 'v': _shape_of(val, depth + 1, seen | {oid})} for k, val in list(v.items())[:30]]
+            return {'kind': 'map', 'entries': entries, 'text': _fmt(v)}
+        if isinstance(v, (set, frozenset)):
+            items = [_shape_of(x, depth + 1, seen | {oid}) for x in list(v)[:30]]
+            return {'kind': 'set', 'items': items, 'text': _fmt(v)}
+        if callable(v):
+            return {'kind': 'primitive', 'text': _fmt(v)}
+        if hasattr(v, '__dict__'):
+            fields_raw = _own_fields(v)
+            keys = list(fields_raw.keys())
+            if 'next' in keys and 'left' not in keys and 'right' not in keys:
+                nodes = []
+                ids = {}
+                cur = v
+                cyclic_to = None
+                while cur is not None and len(nodes) < 80:
+                    cid = id(cur)
+                    if cid in ids:
+                        cyclic_to = ids[cid]
+                        break
+                    nid = _next_shape_id()
+                    ids[cid] = nid
+                    cur_fields_raw = _own_fields(cur, exclude=('next',))
+                    fields = {k: _shape_of(val, depth + 1, frozenset()) for k, val in cur_fields_raw.items()}
+                    nodes.append({'id': nid, 'fields': fields, 'order': list(cur_fields_raw.keys())})
+                    cur = getattr(cur, 'next', None)
+                return {'kind': 'list', 'nodes': nodes, 'cyclicTo': cyclic_to, 'text': _fmt(v)}
+            if 'left' in keys and 'right' in keys:
+                def build_tree(node, d, local_seen):
+                    if node is None: return None
+                    nid = _next_shape_id()
+                    if d > 9 or id(node) in local_seen:
+                        return {'id': nid, 'fields': {}, 'order': [], 'left': None, 'right': None, 'truncated': True}
+                    local_seen = local_seen | {id(node)}
+                    fr = _own_fields(node, exclude=('left', 'right'))
+                    fields = {k: _shape_of(val, d + 1, frozenset()) for k, val in fr.items()}
+                    return {
+                        'id': nid, 'fields': fields, 'order': list(fr.keys()),
+                        'left': build_tree(getattr(node, 'left', None), d + 1, local_seen),
+                        'right': build_tree(getattr(node, 'right', None), d + 1, local_seen),
+                    }
+                return {'kind': 'tree', 'root': build_tree(v, 0, frozenset()), 'text': _fmt(v)}
+            fields = {k: _shape_of(val, depth + 1, seen | {oid}) for k, val in fields_raw.items()}
+            return {'kind': 'object', 'className': type(v).__name__, 'fields': fields, 'order': list(fields_raw.keys()), 'text': _fmt(v)}
+        return {'kind': 'primitive', 'text': _fmt(v)}
+    except Exception:
+        return {'kind': 'primitive', 'text': '<unrepr>'}
+
 def _collect_frames(frame):
     frames = []
     f = frame
@@ -76,7 +157,7 @@ def _collect_frames(frame):
         order = [k for k in f.f_locals.keys() if not k.startswith('__') or k == '__entry_result__']
         vars_ = {}
         for k in order:
-            vars_[k] = _fmt(f.f_locals[k])
+            vars_[k] = _shape_of(f.f_locals[k])
         frames.append({'id': fid, 'name': name, 'vars': vars_, 'order': order})
         f = f.f_back
     return frames
@@ -90,7 +171,7 @@ def _record(frame, label, kind):
     flat = {}
     for fr in frames:
         for k in fr['order']:
-            flat['%s:%s' % (fr['id'], k)] = fr['vars'][k]
+            flat['%s:%s' % (fr['id'], k)] = fr['vars'][k]['text']
     changed = [k for k in flat if _lastFlat.get(k) != flat[k]]
     _lastFlat.clear()
     _lastFlat.update(flat)

@@ -16,6 +16,7 @@ const interpreter = read('js/interpreter.js');
 const javaParserBundle = read('vendor/java-parser.js');
 const javaInterpreter = read('js/java_interpreter.js');
 const javaRunner = read('js/java_runner.js');
+const detectMethods = read('js/detect_methods.js');
 // python/tracer.py is the single source of truth for the Python tracer; it is
 // wrapped here (not hand-copied into a .js file) specifically to avoid the
 // two ever drifting apart. String.raw is required, not a plain template
@@ -48,6 +49,7 @@ html = html.replace('//__INLINE_JAVA_INTERPRETER__', () => javaInterpreter);
 html = html.replace('//__INLINE_JAVA_RUNNER__', () => javaRunner);
 html = html.replace('//__INLINE_PY_TRACER__', () => pyTracer);
 html = html.replace('//__INLINE_PY_RUNNER__', () => pyRunner);
+html = html.replace('//__INLINE_DETECT_METHODS__', () => detectMethods);
 html = html.replace('//__INLINE_EXAMPLES__', () => examples);
 html = html.replace('//__INLINE_APP__', () => app);
 
